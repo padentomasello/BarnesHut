@@ -10,7 +10,8 @@ __kernel void bound_box(__global int *x_cords, __global int *y_cords, __global i
   minx = maxx = x_cords[0];
   miny = maxy = y_cords[0];
   int val;
-  for (int j = idx; j < n; j += (global_dim_size -1)) {
+  inc = global_dim_size - 1;
+  for (int j = idx; j < n; j += inc) {
     val = x_cords[j];
     minx = min(val, minx);
     maxx = max(val, maxx);
@@ -35,9 +36,13 @@ __kernel void bound_box(__global int *x_cords, __global int *y_cords, __global i
   }
   //Only one thread needs to outdate the global buffer 
   if (tid == 0) {
-  	  xy_max[0] = sminx[0];
-      xy_max[1] = smaxx[0];
-  	  xy_max[2] = sminy[0];
-      xy_max[3] = smaxy[0];
+    if (inc = atomic_add((unsigned int*)&block_counted, inc)) {
+      for(j = 0, j <= inc; j++) {
+       minx = min(minx, global_x_mins[j]);
+       maxx = max(maxx, global_x_xmaxs[j]);
+       miny = min(miny, global_y_mins[j]);
+       maxy = max(maxy, global_y_ymaxs[j]);
+     }
+    }
   }
 }
