@@ -10,7 +10,7 @@
 
 int main (int argc, char *argv[])
 {
-  int num_bodies = 10;
+  int num_bodies = 10000000;
   int num_cells = 19;
   int* h_xcords = new int[num_bodies];
   int* h_ycords = new int[num_bodies];
