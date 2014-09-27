@@ -1,5 +1,7 @@
 __kernel void bound_box(__global int *x_cords, __global int *y_cords, __global int* xy_max,
-    __local int* sminx, __local int* smaxx, __local int* sminy, __local int* smaxy, int n)
+    __local int* sminx, __local int* smaxx, __local int* sminy, __local int* smaxy,
+    __global int* global_x_mins, __global int* global_x_maxs, __global int* global_y_mins,
+    __global int* global_y_maxs, __global int* blocked, int n)
 {
   size_t tid = get_local_id(0);
   size_t gid = get_group_id(0);
@@ -10,7 +12,7 @@ __kernel void bound_box(__global int *x_cords, __global int *y_cords, __global i
   minx = maxx = x_cords[0];
   miny = maxy = y_cords[0];
   int val;
-  inc = global_dim_size - 1;
+  int inc = global_dim_size;
   for (int j = idx; j < n; j += inc) {
     val = x_cords[j];
     minx = min(val, minx);
@@ -27,22 +29,32 @@ __kernel void bound_box(__global int *x_cords, __global int *y_cords, __global i
 
   for(int step = dim / 2; step > 0; step = step / 2) {
   	if (tid < step) {
-		sminx[tid] = min(sminx[tid] , sminx[tid + step]);
-    smaxx[tid] = max(smaxx[tid], smaxx[tid + step]);
-		sminy[tid] = min(sminy[tid] , sminy[tid + step]);
-    smaxy[tid] = max(smaxy[tid], smaxy[tid + step]);
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);
+		sminx[tid] = minx = min(sminx[tid] , sminx[tid + step]);
+    smaxx[tid] = maxx = max(smaxx[tid], smaxx[tid + step]);
+		sminy[tid] = miny = min(sminy[tid] , sminy[tid + step]);
+    smaxy[tid] = maxy = max(smaxy[tid], smaxy[tid + step]);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
   }
+   
   //Only one thread needs to outdate the global buffer 
   if (tid == 0) {
-    if (inc = atomic_add((unsigned int*)&block_counted, inc)) {
-      for(j = 0, j <= inc; j++) {
+    global_x_mins[gid] = minx;
+    global_x_maxs[gid] = maxx;
+    global_y_mins[gid] = miny;
+    global_y_maxs[gid] = maxy;
+    inc = 1;
+    if (inc == atomic_add(blocked, inc)) {
+      for(int j = 0; j <= inc; j++) {
        minx = min(minx, global_x_mins[j]);
-       maxx = max(maxx, global_x_xmaxs[j]);
+       maxx = max(maxx, global_x_maxs[j]);
        miny = min(miny, global_y_mins[j]);
-       maxy = max(maxy, global_y_ymaxs[j]);
+       maxy = max(maxy, global_y_maxs[j]);
      }
     }
+    xy_max[0] = minx;
+    xy_max[1] = maxx;
+    xy_max[2] = miny;
+    xy_max[3] = maxy;
   }
 }

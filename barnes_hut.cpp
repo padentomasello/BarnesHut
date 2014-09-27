@@ -32,7 +32,7 @@ int main (int argc, char *argv[])
   compile_ocl_program(bound_box, cv, bounding_box_kernel_str.c_str(),
       bounding_box_name_str.c_str());
 
-  cl_mem d_xcords, d_ycords, d_xy_max;
+  cl_mem d_xcords, d_ycords, d_xy_max, global_minx, global_maxx, global_miny, global_maxy, blocked;
   cl_int d_num_cells;
 
   cl_int err = CL_SUCCESS;
@@ -56,6 +56,20 @@ int main (int argc, char *argv[])
   /* Set local work size and global work sizes */
   size_t local_work_size[1] = {256};
   size_t global_work_size[1] = {512};
+  size_t num_work_groups = 2;
+
+  global_minx = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int)*num_work_groups, NULL, &err);
+  global_maxx = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int)*num_work_groups, NULL, &err);
+  global_miny = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int)*num_work_groups, NULL, &err);
+  global_maxy = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int)*num_work_groups, NULL, &err);
+  blocked = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      1*sizeof(int), NULL, &err);
+  CHK_ERR(err);
+
 
   /* Set the Kernel Arguements */
   err = clSetKernelArg(bound_box, 0, sizeof(cl_mem), &d_xcords);
@@ -72,7 +86,17 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 6, local_work_size[0]*sizeof(int), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 7, sizeof(int), &num_bodies);
+  err = clSetKernelArg(bound_box, 7, num_work_groups*sizeof(int), &global_minx);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 8, num_work_groups*sizeof(int), &global_maxx);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 9, num_work_groups*sizeof(int), &global_minx);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 10, num_work_groups*sizeof(int), &global_maxy);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 11, 1*sizeof(int*), &blocked);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 12, sizeof(int), &num_bodies);
   CHK_ERR(err);
 
   err = clEnqueueNDRangeKernel(cv.commands, bound_box, 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
