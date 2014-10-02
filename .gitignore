@@ -1,0 +1,11 @@
+clhelp.o
+reduce
+reduce.cl
+reduce.cpp
+reduce.o
+scan
+scan.cl
+scan.cpp
+scan.o
+barnes_hut
+barnes_hut.o
