@@ -79,10 +79,17 @@ int main (int argc, char *argv[])
 
   cl_mem posxl, posyl, poszl, minx_d, maxx_d, miny_d, maxy_d, minz_d, maxz_d, blocked, childl,
          velxl, velyl, velzl, accxl, accyl, acczl, sortl, massl, countl, startl;
-  cl_int step_d, bottom_d, max_depth_d;
+  cl_mem step_d, bottom_d, max_depth_d;
 
+  // Create Scalar buffers? 
   cl_int err = CL_SUCCESS;
 
+  step_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int) * 1, NULL, &err);
+  bottom_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int) * 1, NULL, &err);
+  max_depth_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int) * 1, NULL, &err);
   // Create Buffers  NOTE* These do need to be (num_nodes + 1)
   {
   posxl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
@@ -177,10 +184,18 @@ int main (int argc, char *argv[])
       1*sizeof(int), NULL, &err);
   }
   CHK_ERR(err);
-  int blocked_num[1]; // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
-  blocked_num[0] = 0;
+  // Global scalars //TODO is there a better way to do this? 
+  // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
+  int stepd_num = -1;
+  int max_depth_num = -1;
+  int bottom_num;
+  int blocked_num = 0;
   err = clEnqueueWriteBuffer(cv.commands, blocked, true, 0, sizeof(int),
-			     blocked_num, 0, NULL, NULL);
+			     &blocked_num, 0, NULL, NULL);
+  err = clEnqueueWriteBuffer(cv.commands, step_d, true, 0, sizeof(int),
+			     &stepd_num, 0, NULL, NULL);
+  err = clEnqueueWriteBuffer(cv.commands, max_depth_d, true, 0, sizeof(int),
+			     &max_depth_num, 0, NULL, NULL);
 
   // Set the Kernel Arguements for bounding box
   {
@@ -210,11 +225,11 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 12, sizeof(int*), &blocked);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 13, sizeof(int*), step_d);
+  err = clSetKernelArg(bound_box, 13, sizeof(int*), &step_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 14, sizeof(int*), bottom_d);
+  err = clSetKernelArg(bound_box, 14, sizeof(int*), &bottom_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 15, sizeof(int*), max_depth_d);
+  err = clSetKernelArg(bound_box, 15, sizeof(int*), &max_depth_d);
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 16, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
@@ -249,12 +264,18 @@ int main (int argc, char *argv[])
     NULL, NULL);
   err = clEnqueueReadBuffer(cv.commands, startl, true, 0, sizeof(int)*(num_nodes + 1), start_h, 0,
     NULL, NULL);
+  err = clEnqueueReadBuffer(cv.commands, step_d, true, 0, sizeof(int), &stepd_num, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv.commands, bottom_d, true, 0, sizeof(int), &bottom_num, 0,
+    NULL, NULL);
   CHK_ERR(err);
   printf("x: %f", posx_h[num_nodes]);
   printf("y: %f \n", posy_h[num_nodes]);
   printf("z: %f \n", posz_h[num_nodes]);
   printf("mass: %f \n", mass_h[num_nodes]);
   printf("startd: %d \n", start_h[num_nodes]);
+  printf("stepd_num: %d \n", stepd_num);
+  printf("bottom_num: %d \n", bottom_num);
   int k = num_nodes * 8;
   for(int i = 0; i < 8; i++) printf("child: %f \n", child_h[k + i]);
   clReleaseMemObject(posxl);

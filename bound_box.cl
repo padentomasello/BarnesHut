@@ -90,20 +90,18 @@ __kernel void bound_box(__global float *x_cords,
       //radiusd = max(val, maxz, maxz - minz) * 0.5f;
 
       int k = num_nodes;
-
+      *bottomd = k;
       // TODO bottomd;
 
       massl[k] = -1.0f;
       startl[k] = 0;
 
-
-      k *= 8;
-      for (int i = 0; i < 8; i++) childl[k + i] = -1.0;
-
-
       x_cords[num_nodes] = (minx + maxx) * 0.5f;
       y_cords[num_nodes] = (miny + maxy) * 0.5f;
       z_cords[num_nodes] = (minz + maxz) * 0.5f;
+      k *= 8;
+      for (int i = 0; i < 8; i++) childl[k + i] = -1.0;
+      (*stepd)++;
     }
   }
 }
