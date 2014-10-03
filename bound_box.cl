@@ -1,7 +1,7 @@
 __kernel void bound_box(__global float *x_cords, __global float *y_cords,
     __local float* sminx, __local float* smaxx, __local float* sminy, __local float* smaxy,
     __global float* global_x_mins, __global float* global_x_maxs, __global float* global_y_mins,
-    __global float* global_y_maxs, __global int* blocked, int num_bodies, int num_nodes)
+    __global float* global_y_maxs, __global volatile int* blocked, int num_bodies, int num_nodes)
 {
   size_t tid = get_local_id(0);
   size_t gid = get_group_id(0);
@@ -38,21 +38,22 @@ __kernel void bound_box(__global float *x_cords, __global float *y_cords,
   }
    
   //Only one thread needs to outdate the global buffer 
+  inc = (global_dim_size / dim) - 1;
   if (tid == 0) {
     global_x_mins[gid] = minx;
     global_x_maxs[gid] = maxx;
     global_y_mins[gid] = miny;
     global_y_maxs[gid] = maxy;
-    inc = 1;
-    if (inc == atomic_add(blocked, inc)) {
+    inc = (global_dim_size / dim) - 1;
+    if (inc == atomic_inc(blocked)) {
       for(int j = 0; j <= inc; j++) {
-       minx = min(minx, global_x_mins[j]);
-       maxx = max(maxx, global_x_maxs[j]);
-       miny = min(miny, global_y_mins[j]);
-       maxy = max(maxy, global_y_maxs[j]);
-     }
+        minx = min(minx, global_x_mins[j]);
+        maxx = max(maxx, global_x_maxs[j]);
+        miny = min(miny, global_y_mins[j]);
+        maxy = max(maxy, global_y_maxs[j]);
+      }
+      x_cords[num_nodes] = (minx + maxx) * 0.5f;
+      y_cords[num_nodes] = (miny + maxy) * 0.5f;
     }
-    x_cords[num_nodes] = (minx + maxx) * 0.5f;
-    y_cords[num_nodes] = (miny + maxy) * 0.5f;
   }
 }
