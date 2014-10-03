@@ -1,4 +1,4 @@
-OBJS = barnes_hut.o
+OBJS = barnes_hut.o clhelp.o
 
 UNAME_S := $(shell uname -s)
 

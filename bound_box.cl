@@ -1,19 +1,19 @@
-__kernel void bound_box(__global int *x_cords, __global int *y_cords, __global int* xy_max,
-    __local int* sminx, __local int* smaxx, __local int* sminy, __local int* smaxy,
-    __global int* global_x_mins, __global int* global_x_maxs, __global int* global_y_mins,
-    __global int* global_y_maxs, __global int* blocked, int n)
+__kernel void bound_box(__global float *x_cords, __global float *y_cords,
+    __local float* sminx, __local float* smaxx, __local float* sminy, __local float* smaxy,
+    __global float* global_x_mins, __global float* global_x_maxs, __global float* global_y_mins,
+    __global float* global_y_maxs, __global int* blocked, int num_bodies, int num_nodes)
 {
   size_t tid = get_local_id(0);
   size_t gid = get_group_id(0);
   size_t dim = get_local_size(0);
   size_t global_dim_size = get_global_size(0);
   size_t idx = get_global_id(0);
-  int minx, maxx, miny, maxy;
+  float minx, maxx, miny, maxy;
   minx = maxx = x_cords[0];
   miny = maxy = y_cords[0];
-  int val;
+  float val;
   int inc = global_dim_size;
-  for (int j = idx; j < n; j += inc) {
+  for (int j = idx; j < num_bodies; j += inc) {
     val = x_cords[j];
     minx = min(val, minx);
     maxx = max(val, maxx);
@@ -52,9 +52,7 @@ __kernel void bound_box(__global int *x_cords, __global int *y_cords, __global i
        maxy = max(maxy, global_y_maxs[j]);
      }
     }
-    xy_max[0] = minx;
-    xy_max[1] = maxx;
-    xy_max[2] = miny;
-    xy_max[3] = maxy;
+    x_cords[num_nodes] = (minx + maxx) * 0.5f;
+    y_cords[num_nodes] = (miny + maxy) * 0.5f;
   }
 }
