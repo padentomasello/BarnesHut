@@ -14,6 +14,7 @@ __kernel void bound_box(__global float *x_cords,
                         __global volatile int* stepd,
                         __global volatile int* bottomd,
                         __global volatile int* maxdepthd,
+                        __global volatile float* radius,
                         __local float* sminx,
                         __local float* smaxx,
                         __local float* sminy,
@@ -87,7 +88,7 @@ __kernel void bound_box(__global float *x_cords,
 
       // Compute the radius
       val = max(maxx - minx, maxy - miny);
-      //radiusd = max(val, maxz, maxz - minz) * 0.5f;
+      *radius = (float) (max(val, maxz - minz) * 0.5f);
 
       int k = num_nodes;
       *bottomd = k;

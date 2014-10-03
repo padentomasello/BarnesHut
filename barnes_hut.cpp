@@ -79,7 +79,7 @@ int main (int argc, char *argv[])
 
   cl_mem posxl, posyl, poszl, minx_d, maxx_d, miny_d, maxy_d, minz_d, maxz_d, blocked, childl,
          velxl, velyl, velzl, accxl, accyl, acczl, sortl, massl, countl, startl;
-  cl_mem step_d, bottom_d, max_depth_d;
+  cl_mem step_d, bottom_d, max_depth_d, radius_d;
 
   // Create Scalar buffers? 
   cl_int err = CL_SUCCESS;
@@ -90,6 +90,8 @@ int main (int argc, char *argv[])
       sizeof(int) * 1, NULL, &err);
   max_depth_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       sizeof(int) * 1, NULL, &err);
+  radius_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(float) * 1, NULL, &err);
   // Create Buffers  NOTE* These do need to be (num_nodes + 1)
   {
   posxl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
@@ -223,15 +225,15 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 11, sizeof(cl_mem), &maxz_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 12, sizeof(int*), &blocked);
+  err = clSetKernelArg(bound_box, 12, sizeof(cl_mem), &blocked);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 13, sizeof(int*), &step_d);
+  err = clSetKernelArg(bound_box, 13, sizeof(cl_mem), &step_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 14, sizeof(int*), &bottom_d);
+  err = clSetKernelArg(bound_box, 14, sizeof(cl_mem), &bottom_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 15, sizeof(int*), &max_depth_d);
+  err = clSetKernelArg(bound_box, 15, sizeof(cl_mem), &max_depth_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 16, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 16, sizeof(cl_mem), &radius_d);
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 17, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
@@ -243,9 +245,11 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 21, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 22, sizeof(int), &num_bodies);
+  err = clSetKernelArg(bound_box, 22, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 23, sizeof(int), &num_nodes);
+  err = clSetKernelArg(bound_box, 23, sizeof(int), &num_bodies);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 24, sizeof(int), &num_nodes);
   CHK_ERR(err);
   }
 
@@ -268,6 +272,9 @@ int main (int argc, char *argv[])
     NULL, NULL);
   err = clEnqueueReadBuffer(cv.commands, bottom_d, true, 0, sizeof(int), &bottom_num, 0,
     NULL, NULL);
+  float radius;
+  err = clEnqueueReadBuffer(cv.commands, radius_d, true, 0, sizeof(float), &radius, 0,
+    NULL, NULL);
   CHK_ERR(err);
   printf("x: %f", posx_h[num_nodes]);
   printf("y: %f \n", posy_h[num_nodes]);
@@ -276,6 +283,7 @@ int main (int argc, char *argv[])
   printf("startd: %d \n", start_h[num_nodes]);
   printf("stepd_num: %d \n", stepd_num);
   printf("bottom_num: %d \n", bottom_num);
+  printf("radius: %f \n", radius);
   int k = num_nodes * 8;
   for(int i = 0; i < 8; i++) printf("child: %f \n", child_h[k + i]);
   clReleaseMemObject(posxl);
