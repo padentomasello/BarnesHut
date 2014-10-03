@@ -28,7 +28,7 @@ int main (int argc, char *argv[])
   //float *velxl, *velyl, *velzl;
   //float *accxl, *accyl, *acczl;
   register double rsc, vsc, r, v, x, y, z, sq, scale;
-  int num_bodies = 100000;
+  int num_bodies = 10;
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
@@ -99,7 +99,7 @@ int main (int argc, char *argv[])
   size_t local_work_size[1] = {256};
   size_t global_work_size[1] = {1024};
   size_t num_work_groups = 4;
-  
+
   // Used for global reduction in finding min and max of bounding box
   minx_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       sizeof(float)*num_work_groups, NULL, &err);
@@ -166,12 +166,19 @@ int main (int argc, char *argv[])
     NULL, NULL);
   err = clEnqueueReadBuffer(cv.commands, posyl, true, 0, sizeof(float)*(num_nodes + 1), posy_h, 0,
     NULL, NULL);
+  err = clEnqueueReadBuffer(cv.commands, poszl, true, 0, sizeof(float)*(num_nodes + 1), posz_h, 0,
+    NULL, NULL);
   CHK_ERR(err);
   printf("x: %f", posx_h[num_nodes]);
   printf("x: %f \n", posy_h[num_nodes]);
+  //for(int i = 0; i < num_nodes + 1; i++) {
+    //printf("x: %f \n", posz_h[i]);
+  //}
+  printf("x: %f \n", posz_h[num_nodes]);
   clReleaseMemObject(posxl);
   clReleaseMemObject(posyl);
+  clReleaseMemObject(poszl);
 
-  
+
 }
 

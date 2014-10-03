@@ -1,17 +1,18 @@
-__kernel void bound_box(__global float *x_cords, __global float *y_cords, __global *z_cords,
+__kernel void bound_box(__global float *x_cords, __global float *y_cords, __global float* z_cords,
     __local float* sminx, __local float* smaxx, __local float* sminy, __local float* smaxy, __local float* sminz,
     __local float* smaxz,
     __global float* global_x_mins, __global float* global_x_maxs, __global float* global_y_mins,
-    __global float* global_y_maxs, __global float* global_z_mins, __global global_z_max, __global volatile int* blocked, int num_bodies, int num_nodes)
+    __global float* global_y_maxs, __global float* global_z_mins, __global float* global_z_maxs, __global volatile int* blocked, int num_bodies, int num_nodes)
 {
   size_t tid = get_local_id(0);
   size_t gid = get_group_id(0);
   size_t dim = get_local_size(0);
   size_t global_dim_size = get_global_size(0);
   size_t idx = get_global_id(0);
-  float minx, maxx, miny, maxy;
+  float minx, maxx, miny, maxy, minz, maxz;
   minx = maxx = x_cords[0];
   miny = maxy = y_cords[0];
+  minz = maxz = z_cords[0];
   float val;
   int inc = global_dim_size;
   for (int j = idx; j < num_bodies; j += inc) {
@@ -21,11 +22,16 @@ __kernel void bound_box(__global float *x_cords, __global float *y_cords, __glob
     val = y_cords[j];
     miny = min(val, miny);
     maxy = max(val, maxy);
+    val = z_cords[j];
+    minz = min(val, minz);
+    maxz = max(val, maxz);
   }
   sminx[tid] = minx;
   smaxx[tid] = maxx;
   sminy[tid] = miny;
   smaxy[tid] = maxy;
+  sminz[tid] = minz;
+  smaxz[tid] = maxz;
   barrier(CLK_LOCAL_MEM_FENCE);
 
   for(int step = dim / 2; step > 0; step = step / 2) {
@@ -34,6 +40,8 @@ __kernel void bound_box(__global float *x_cords, __global float *y_cords, __glob
     smaxx[tid] = maxx = max(smaxx[tid], smaxx[tid + step]);
 		sminy[tid] = miny = min(sminy[tid] , sminy[tid + step]);
     smaxy[tid] = maxy = max(smaxy[tid], smaxy[tid + step]);
+		sminz[tid] = minz = min(sminz[tid] , sminz[tid + step]);
+    smaxz[tid] = maxz = max(smaxz[tid], smaxz[tid + step]);
     }
     barrier(CLK_LOCAL_MEM_FENCE);
   }
@@ -45,6 +53,8 @@ __kernel void bound_box(__global float *x_cords, __global float *y_cords, __glob
     global_x_maxs[gid] = maxx;
     global_y_mins[gid] = miny;
     global_y_maxs[gid] = maxy;
+    global_z_mins[gid] = minz;
+    global_z_maxs[gid] = maxz;
     inc = (global_dim_size / dim) - 1;
     if (inc == atomic_inc(blocked)) {
       for(int j = 0; j <= inc; j++) {
@@ -52,9 +62,12 @@ __kernel void bound_box(__global float *x_cords, __global float *y_cords, __glob
         maxx = max(maxx, global_x_maxs[j]);
         miny = min(miny, global_y_mins[j]);
         maxy = max(maxy, global_y_maxs[j]);
+        minz = min(minz, global_z_mins[j]);
+        maxz = max(maxz, global_z_maxs[j]);
       }
       x_cords[num_nodes] = (minx + maxx) * 0.5f;
       y_cords[num_nodes] = (miny + maxy) * 0.5f;
+      z_cords[num_nodes] = (minz + maxz) * 0.5f;
     }
   }
 }

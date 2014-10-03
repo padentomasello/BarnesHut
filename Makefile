@@ -12,4 +12,5 @@ all: $(OBJS)
 endif
 
 clean:
-	rm -rf $(OBJS) reduce
+	rm -rf $(OBJS) reduce barnes_hut
+
