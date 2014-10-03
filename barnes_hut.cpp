@@ -79,7 +79,7 @@ int main (int argc, char *argv[])
 
   cl_mem posxl, posyl, poszl, minx_d, maxx_d, miny_d, maxy_d, minz_d, maxz_d, blocked, childl,
          velxl, velyl, velzl, accxl, accyl, acczl, sortl, massl, countl, startl;
-  cl_int d_num_nodes;
+  cl_int step_d, bottom_d, max_depth_d;
 
   cl_int err = CL_SUCCESS;
 
@@ -210,11 +210,11 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 12, sizeof(int*), &blocked);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 13, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 13, sizeof(int*), step_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 14, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 14, sizeof(int*), bottom_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 15, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 15, sizeof(int*), max_depth_d);
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 16, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
@@ -222,9 +222,15 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 18, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 19, sizeof(int), &num_bodies);
+  err = clSetKernelArg(bound_box, 19, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 20, sizeof(int), &num_nodes);
+  err = clSetKernelArg(bound_box, 20, local_work_size[0]*sizeof(float), NULL);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 21, local_work_size[0]*sizeof(float), NULL);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 22, sizeof(int), &num_bodies);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 23, sizeof(int), &num_nodes);
   CHK_ERR(err);
   }
 

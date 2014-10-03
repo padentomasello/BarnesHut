@@ -11,14 +11,17 @@ __kernel void bound_box(__global float *x_cords,
                         __global float* global_z_mins,
                         __global float* global_z_maxs,
                         __global volatile int* blocked,
+                        __global volatile int* stepd,
+                        __global volatile int* bottomd,
+                        __global volatile int* maxdepthd,
                         __local float* sminx,
                         __local float* smaxx,
                         __local float* sminy,
                         __local float* smaxy,
                         __local float* sminz,
                         __local float* smaxz,
-                        int num_bodies,
-                        int num_nodes)
+                        const int num_bodies,
+                        const int num_nodes)
 {
   size_t tid = get_local_id(0);
   size_t gid = get_group_id(0);
