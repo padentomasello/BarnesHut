@@ -1,4 +1,4 @@
-__kernel void bound_box(__global float *x_cords, __global float *y_cords, __global float* z_cords,
+__kernel void bound_box(__global float *x_cords, __global float *y_cords, __global float* z_cords, __global float* childl,
     __local float* sminx, __local float* smaxx, __local float* sminy, __local float* smaxy, __local float* sminz,
     __local float* smaxz,
     __global float* global_x_mins, __global float* global_x_maxs, __global float* global_y_mins,
@@ -45,8 +45,8 @@ __kernel void bound_box(__global float *x_cords, __global float *y_cords, __glob
     }
     barrier(CLK_LOCAL_MEM_FENCE);
   }
-   
-  //Only one thread needs to outdate the global buffer 
+
+  // Only one thread needs to outdate the global buffer
   inc = (global_dim_size / dim) - 1;
   if (tid == 0) {
     global_x_mins[gid] = minx;
@@ -65,6 +65,20 @@ __kernel void bound_box(__global float *x_cords, __global float *y_cords, __glob
         minz = min(minz, global_z_mins[j]);
         maxz = max(maxz, global_z_maxs[j]);
       }
+
+      // Compute the radius
+      val = max(maxx - minx, maxy - miny);
+      //radiusd = max(val, maxz, maxz - minz) * 0.5f;
+
+      int k = num_nodes;
+
+      // TODO
+      childl[num_nodes] = 100.0;
+
+      k *= 8;
+      for (int i = 0; i < 8; i++) childl[k + i] = -1.0;
+
+
       x_cords[num_nodes] = (minx + maxx) * 0.5f;
       y_cords[num_nodes] = (miny + maxy) * 0.5f;
       z_cords[num_nodes] = (minz + maxz) * 0.5f;
