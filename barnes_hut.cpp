@@ -21,6 +21,7 @@ int main (int argc, char *argv[])
   //clock_t starttime, endtime;
   // TODO child_h not neccessary in actual computation
   float *mass_h, *posx_h, *posy_h, *posz_h, *velx_h, *vely_h, *velz_h, *child_h;
+  int *start_h;
   float *maxxl, *maxyl, *maxzl;
   float *minxl, *minyl, *minzl;
 
@@ -40,6 +41,8 @@ int main (int argc, char *argv[])
   {
   mass_h = (float *)malloc(sizeof(float) * (num_nodes + 1));
   if (mass_h == NULL) {fprintf(stderr, "cannot allocate mass\n");  exit(-1);}
+  start_h = (int *)malloc(sizeof(float) * (num_nodes + 1));
+  if (start_h == NULL) {fprintf(stderr, "cannot allocate mass\n");  exit(-1);}
   posx_h = (float *)malloc(sizeof(float) * (num_nodes + 1)); // TODO Can change to number of bodies
   if (posx_h == NULL) {fprintf(stderr, "cannot allocate posx\n");  exit(-1);}
   posy_h = (float *)malloc(sizeof(float) * (num_nodes + 1)); // TODO Can change to number of bodies
@@ -75,7 +78,7 @@ int main (int argc, char *argv[])
       bounding_box_name_str.c_str());
 
   cl_mem posxl, posyl, poszl, minx_d, maxx_d, miny_d, maxy_d, minz_d, maxz_d, blocked, childl,
-         velxl, velyl, velzl, accxl, accyl, acczl, sortl;
+         velxl, velyl, velzl, accxl, accyl, acczl, sortl, massl, countl, startl;
   cl_int d_num_nodes;
 
   cl_int err = CL_SUCCESS;
@@ -98,6 +101,15 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   poszl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), NULL, &err);
+  CHK_ERR(err);
+  massl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(float)*(num_nodes + 1), NULL, &err);
+  CHK_ERR(err);
+  countl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(float)*(num_nodes + 1), NULL, &err);
+  CHK_ERR(err);
+  startl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(int)*(num_nodes + 1), NULL, &err);
   CHK_ERR(err);
   childl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       sizeof(float)*8*(num_nodes + 1), NULL, &err);
@@ -159,6 +171,8 @@ int main (int argc, char *argv[])
       sizeof(float)*num_work_groups, NULL, &err);
   maxz_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       sizeof(float)*num_work_groups, NULL, &err);
+  maxz_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(float)*num_work_groups, NULL, &err);
   blocked = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       1*sizeof(int), NULL, &err);
   }
@@ -178,9 +192,9 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 3, sizeof(cl_mem), &childl);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 4, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 4, sizeof(cl_mem), &massl);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 5, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 5, sizeof(cl_mem), &startl);
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 6, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
@@ -190,23 +204,27 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 9, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 10, sizeof(cl_mem), &minx_d);
+  err = clSetKernelArg(bound_box, 10, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 11, sizeof(cl_mem), &maxx_d);
+  err = clSetKernelArg(bound_box, 11, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 12, sizeof(cl_mem), &miny_d);
+  err = clSetKernelArg(bound_box, 12, sizeof(cl_mem), &minx_d);
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 13, sizeof(cl_mem), &maxx_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 14, sizeof(cl_mem), &minz_d);
+  err = clSetKernelArg(bound_box, 14, sizeof(cl_mem), &miny_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 15, sizeof(cl_mem), &maxz_d);
+  err = clSetKernelArg(bound_box, 15, sizeof(cl_mem), &maxy_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 16, sizeof(int*), &blocked);
+  err = clSetKernelArg(bound_box, 16, sizeof(cl_mem), &minz_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 17, sizeof(int), &num_bodies);
+  err = clSetKernelArg(bound_box, 17, sizeof(cl_mem), &maxz_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 18, sizeof(int), &num_nodes);
+  err = clSetKernelArg(bound_box, 18, sizeof(int*), &blocked);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 19, sizeof(int), &num_bodies);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 20, sizeof(int), &num_nodes);
   CHK_ERR(err);
   }
 
@@ -221,12 +239,18 @@ int main (int argc, char *argv[])
     NULL, NULL);
   err = clEnqueueReadBuffer(cv.commands, childl, true, 0, sizeof(float)*8*(num_nodes + 1), child_h, 0,
     NULL, NULL);
+  err = clEnqueueReadBuffer(cv.commands, massl, true, 0, sizeof(float)*(num_nodes + 1), mass_h, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv.commands, startl, true, 0, sizeof(int)*(num_nodes + 1), start_h, 0,
+    NULL, NULL);
   CHK_ERR(err);
   printf("x: %f", posx_h[num_nodes]);
-  printf("x: %f \n", posy_h[num_nodes]);
-  printf("x: %f \n", posz_h[num_nodes]);
+  printf("y: %f \n", posy_h[num_nodes]);
+  printf("z: %f \n", posz_h[num_nodes]);
+  printf("mass: %f \n", mass_h[num_nodes]);
+  printf("startd: %d \n", start_h[num_nodes]);
   int k = num_nodes * 8;
-  for(int i = 0; i < 8; i++) printf("child: %f", child_h[k + i]);
+  for(int i = 0; i < 8; i++) printf("child: %f \n", child_h[k + i]);
   clReleaseMemObject(posxl);
   clReleaseMemObject(posyl);
   clReleaseMemObject(poszl);
