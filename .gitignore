@@ -10,3 +10,4 @@ scan.o
 barnes_hut
 barnes_hut.o
 *.swp
+*.swo
