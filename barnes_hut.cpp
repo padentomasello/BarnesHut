@@ -54,10 +54,7 @@ int main (int argc, char *argv[])
   for (int i = 0; i < num_bodies; i ++) {
     posx_h[i] = i;
     posy_h[i] = i;
-  }
-  for (int i = num_bodies; i < num_nodes; i++) {
-    posx_h[i] = 0;
-    posy_h[i] = 0;
+    posz_h[i] = i;
   }
 
   std::string bounding_box_kernel_str;
@@ -72,7 +69,7 @@ int main (int argc, char *argv[])
   compile_ocl_program(bound_box, cv, bounding_box_kernel_str.c_str(),
       bounding_box_name_str.c_str());
 
-  cl_mem posxl, posyl, minx_d, maxx_d, miny_d, maxy_d, minz_d, maxz_d, blocked;
+  cl_mem posxl, posyl, poszl, minx_d, maxx_d, miny_d, maxy_d, minz_d, maxz_d, blocked;
   cl_int d_num_nodes;
 
   cl_int err = CL_SUCCESS;
@@ -83,12 +80,19 @@ int main (int argc, char *argv[])
   posyl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), NULL, &err);
   CHK_ERR(err);
+  poszl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
+      sizeof(float)*(num_nodes + 1), NULL, &err);
+  CHK_ERR(err);
 
   err = clEnqueueWriteBuffer(cv.commands, posxl, true, 0, sizeof(float)*(num_nodes + 1),
 			     posx_h, 0, NULL, NULL);
   CHK_ERR(err);
   err = clEnqueueWriteBuffer(cv.commands, posyl, true, 0, sizeof(float)*(num_nodes + 1),
 			     posy_h, 0, NULL, NULL);
+  CHK_ERR(err);
+
+  err = clEnqueueWriteBuffer(cv.commands, poszl, true, 0, sizeof(float)*(num_nodes + 1),
+           posz_h, 0, NULL, NULL);
   CHK_ERR(err);
 
   /* Set local work size and global work sizes */
@@ -112,7 +116,7 @@ int main (int argc, char *argv[])
   blocked = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       1*sizeof(int), NULL, &err);
   CHK_ERR(err);
-  int blocked_num[1];
+  int blocked_num[1]; // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
   blocked_num[0] = 0;
   err = clEnqueueWriteBuffer(cv.commands, blocked, true, 0, sizeof(int),
 			     blocked_num, 0, NULL, NULL);
@@ -122,7 +126,7 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 1, sizeof(cl_mem), &posyl);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 2, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 2, sizeof(cl_mem), &poszl);
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 3, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
@@ -130,19 +134,29 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 5, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 6, sizeof(cl_mem), &minx_d);
+  err = clSetKernelArg(bound_box, 6, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 7, sizeof(cl_mem), &maxx_d);
+  err = clSetKernelArg(bound_box, 7, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 8, sizeof(cl_mem), &miny_d);
+  err = clSetKernelArg(bound_box, 8, local_work_size[0]*sizeof(float), NULL);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 9, sizeof(cl_mem), &maxx_d);
+  err = clSetKernelArg(bound_box, 9, sizeof(cl_mem), &minx_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 10, sizeof(int*), &blocked);
+  err = clSetKernelArg(bound_box, 10, sizeof(cl_mem), &maxx_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 11, sizeof(int), &num_bodies);
+  err = clSetKernelArg(bound_box, 11, sizeof(cl_mem), &miny_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 12, sizeof(int), &num_nodes);
+  err = clSetKernelArg(bound_box, 12, sizeof(cl_mem), &maxx_d);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 13, sizeof(cl_mem), &minz_d);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 14, sizeof(cl_mem), &maxz_d);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 15, sizeof(int*), &blocked);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 16, sizeof(int), &num_bodies);
+  CHK_ERR(err);
+  err = clSetKernelArg(bound_box, 17, sizeof(int), &num_nodes);
   CHK_ERR(err);
 
   err = clEnqueueNDRangeKernel(cv.commands, bound_box, 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
