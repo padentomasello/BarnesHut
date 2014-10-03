@@ -28,7 +28,7 @@ int main (int argc, char *argv[])
   //float *velxl, *velyl, *velzl;
   //float *accxl, *accyl, *acczl;
   register double rsc, vsc, r, v, x, y, z, sq, scale;
-  int num_bodies = 16;
+  int num_bodies = 10000;
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
