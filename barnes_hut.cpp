@@ -36,10 +36,13 @@ struct KernelArgs{
 struct HostMemory {
   float *mass, *posx, *posy, *posz, *velx, *vely, *velz, *child;
   int* start;
+  int step, max_depth, bottom, blocked;
 };
 
 void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
   cl_int err;
+  int num_nodes = args->num_nodes;
+  int num_bodies = args->num_bodies;
   args->step = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(int) * 1, NULL, &err);
   args->bottom = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
@@ -54,8 +57,8 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
       sizeof(float) * (num_nodes + 1), host_memory->posx, &err);
   CHK_ERR(err);
   args->posz = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), host_memory.posy, &err);
-  args->posy = clCreateBuffer(cv.context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
+      sizeof(float)*(num_nodes + 1), host_memory->posy, &err);
+  args->posy = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), host_memory->posz, &err);
   CHK_ERR(err);
   args->mass = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
@@ -92,6 +95,15 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
         CL_BUFFER_CREATE_TYPE_REGION, &acczl_region, &err);
     args->sort = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &sortl_region, &err);
+  
+  // Global scalars //TODO is there a better way to do this?
+  // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
+  args->blocked = clCreateBuffer(cv->context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+      sizeof(int), &host_memory->blocked, &err);
+  args->step = clCreateBuffer(cv->context, CL_MEM_READ_WRITE |CL_MEM_COPY_HOST_PTR,
+      sizeof(int), &host_memory->step, &err);
+  args->max_depth = clCreateBuffer(cv->context, CL_MEM_READ_WRITE |CL_MEM_COPY_HOST_PTR,
+      sizeof(int), &host_memory->max_depth, &err);
 
 }
 
@@ -141,6 +153,9 @@ void SetArgs(cl_kernel *kernel, KernelArgs* args){
 }
 
 void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
+  host->step = -1;
+  host->max_depth = -1;
+  host->blocked = 0;
   host->mass = (float *)malloc(sizeof(float) * (num_nodes + 1));
   if (host->mass == NULL) {fprintf(stderr, "cannot allocate mass\n");  exit(-1);}
   host->start = (int *)malloc(sizeof(float) * (num_nodes + 1));
@@ -161,29 +176,47 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   if (host->child == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
+void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory){
+  cl_int err;
+  int num_nodes = args->num_nodes;
+  err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posx, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posy, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(float)*8*(num_nodes + 1), host_memory->child, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->mass, true, 0, sizeof(float)*(num_nodes + 1), host_memory->mass, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->start, true, 0, sizeof(int)*(num_nodes + 1), host_memory->start, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->step, true, 0, sizeof(int), &host_memory->step, 0,
+    NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->bottom, true, 0, sizeof(int), &host_memory->bottom, 0,
+    NULL, NULL);
+  float radius;
+  err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &radius, 0,
+    NULL, NULL);
+  CHK_ERR(err);
+
+  printf("x: %f\n", host_memory->posx[num_nodes]);
+  printf("y: %f \n", host_memory->posy[num_nodes]);
+  printf("z: %f \n", host_memory->posz[num_nodes]);
+  printf("mass: %f \n", host_memory->mass[num_nodes]);
+  printf("startd: %d \n", host_memory->start[num_nodes]);
+  printf("stepd_num: %d \n", host_memory->step);
+  printf("bottom_num: %d \n", host_memory->bottom);
+  printf("radius: %f \n", radius);
+  int k = args->num_nodes * 8;
+  for(int i = 0; i < 8; i++) printf("child: %f \n", host_memory->child[k + i]);
+}
+
 
 int main (int argc, char *argv[])
 {
-  //register int i, run;
-  //register int step, timesteps;
-  //register int runtime, mintime;
-  //int error;
-  //register float dtime, dthf, epssq, itolsq;
-  //float time, timing[7];
-  //clock_t starttime, endtime;
-  // TODO child_h not neccessary in actual computation
-  int *start_h;
-  float *maxxl, *maxyl, *maxzl;
-  float *minxl, *minyl, *minzl;
-
   KernelArgs args;
-
-  //int *errl, *sortl, *childl, *countl, *startl;
-  //float *massl;
-  //float *velxl, *velyl, *velzl;
-  //float *accxl, *accyl, *acczl;
-  register double rsc, vsc, r, v, x, y, z, sq, scale;
-  args.num_bodies = 10;
+  //register double rsc, vsc, r, v, x, y, z, sq, scale;
   int num_bodies =10;
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
@@ -191,7 +224,9 @@ int main (int argc, char *argv[])
   if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
   while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
   num_nodes--;
+
   args.num_nodes = num_nodes;
+  args.num_bodies = num_bodies;
 
   HostMemory host_memory;
   AllocateHostMemory(&host_memory, num_nodes, num_bodies);
@@ -215,13 +250,9 @@ int main (int argc, char *argv[])
   compile_ocl_program(bound_box, cv, bounding_box_kernel_str.c_str(),
       bounding_box_name_str.c_str());
 
-  cl_mem posxl, posyl, poszl, minx_d, maxx_d, miny_d, maxy_d, minz_d, maxz_d, blocked, childl,
-         velxl, velyl, velzl, accxl, accyl, acczl, sortl, massl, countl, startl;
-  //cl_mem step_d, bottom_d, max_depth_d, radius_d;
-
-  // Create Scalar buffers?
   cl_int err = CL_SUCCESS;
 
+  CreateMemBuffer(&cv, &args, &host_memory);
 
 
   /* Set local work size and global work sizes */
@@ -229,75 +260,17 @@ int main (int argc, char *argv[])
   size_t local_work_size[1] = {THREADS1};
   size_t global_work_size[1] = {32*THREADS1};
   size_t num_work_groups = 2;
-  //printf("WORK GORUP SIZE: %d", CL_DEVICE_MAX_WORK_GROUP_SIZE);
 
-  // Used for global reduction in finding min and max of bounding box
-  args.minx_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*num_work_groups, NULL, &err);
-  args.maxx_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*num_work_groups, NULL, &err);
-  args.miny_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*num_work_groups, NULL, &err);
-  args.maxy_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*num_work_groups, NULL, &err);
-  args.minz_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*num_work_groups, NULL, &err);
-  args.maxz_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*num_work_groups, NULL, &err);
-  args.maxz_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*num_work_groups, NULL, &err);
-  args.blocked = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      1*sizeof(int), NULL, &err);
-  CHK_ERR(err);
-  // Global scalars //TODO is there a better way to do this?
-  // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
-  int stepd_num = -1;
-  int max_depth_num = -1;
-  int bottom_num;
-  int blocked_num = 0;
-  err = clEnqueueWriteBuffer(cv.commands, args.blocked, true, 0, sizeof(int),
-           &blocked_num, 0, NULL, NULL);
-  err = clEnqueueWriteBuffer(cv.commands, args.step_d, true, 0, sizeof(int),
-           &stepd_num, 0, NULL, NULL);
-  err = clEnqueueWriteBuffer(cv.commands, args.max_depth_d, true, 0, sizeof(int),
-           &max_depth_num, 0, NULL, NULL);
 
   // Set the Kernel Arguements for bounding box
   SetArgs(&bound_box, &args);
 
   err = clEnqueueNDRangeKernel(cv.commands, bound_box, 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
+  DebuggingPrintValue(&cv, &args, &host_memory);
 
-  err = clEnqueueReadBuffer(cv.commands, args.posxl, true, 0, sizeof(float)*(num_nodes + 1), host_memory.posx, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv.commands, args.posyl, true, 0, sizeof(float)*(num_nodes + 1), host_memory.posy, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv.commands, args.poszl, true, 0, sizeof(float)*(num_nodes + 1), host_memory.posz, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv.commands, args.childl, true, 0, sizeof(float)*8*(num_nodes + 1), host_memory.child, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv.commands, args.massl, true, 0, sizeof(float)*(num_nodes + 1), host_memory.mass, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv.commands, args.startl, true, 0, sizeof(int)*(num_nodes + 1), host_memory.start, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv.commands, args.step_d, true, 0, sizeof(int), &stepd_num, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv.commands, args.bottom_d, true, 0, sizeof(int), &bottom_num, 0,
-    NULL, NULL);
-  float radius;
-  err = clEnqueueReadBuffer(cv.commands, args.radius_d, true, 0, sizeof(float), &radius, 0,
-    NULL, NULL);
-  CHK_ERR(err);
-  printf("x: %f", host_memory.posx[num_nodes]);
-  printf("y: %f \n", host_memory.posy[num_nodes]);
-  printf("z: %f \n", host_memory.posz[num_nodes]);
-  printf("mass: %f \n", host_memory.mass[num_nodes]);
-  printf("startd: %d \n", host_memory.start[num_nodes]);
-  printf("stepd_num: %d \n", stepd_num);
-  printf("bottom_num: %d \n", bottom_num);
-  printf("radius: %f \n", radius);
-  int k = num_nodes * 8;
-  for(int i = 0; i < 8; i++) printf("child: %f \n", host_memory.child[k + i]);
+
+
 
 
 }

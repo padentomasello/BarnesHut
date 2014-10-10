@@ -42,6 +42,7 @@ __kernel void bound_box(__global float *x_cords,
   size_t dim = get_local_size(0);
   size_t global_dim_size = get_global_size(0);
   size_t idx = get_global_id(0);
+
   float minx, maxx, miny, maxy, minz, maxz;
   __local float sminx[THREADS1], smaxx[THREADS1], sminy[THREADS1], smaxy[THREADS1], sminz[THREADS1], smaxz[THREADS1];
   minx = maxx = x_cords[0];
@@ -111,6 +112,8 @@ __kernel void bound_box(__global float *x_cords,
       massl[k] = -1.0f;
       startl[k] = 0;
 
+
+      x_cords[num_nodes] = (minx + maxx) * 0.5f;
       x_cords[num_nodes] = (minx + maxx) * 0.5f;
       y_cords[num_nodes] = (miny + maxy) * 0.5f;
       z_cords[num_nodes] = (minz + maxz) * 0.5f;
