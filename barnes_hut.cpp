@@ -215,7 +215,6 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  KernelArgs args;
   //register double rsc, vsc, r, v, x, y, z, sq, scale;
   int num_bodies =10;
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -225,6 +224,7 @@ int main (int argc, char *argv[])
   while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
   num_nodes--;
 
+  KernelArgs args;
   args.num_nodes = num_nodes;
   args.num_bodies = num_bodies;
 
@@ -267,11 +267,8 @@ int main (int argc, char *argv[])
 
   err = clEnqueueNDRangeKernel(cv.commands, bound_box, 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
+
   DebuggingPrintValue(&cv, &args, &host_memory);
-
-
-
-
 
 }
 
