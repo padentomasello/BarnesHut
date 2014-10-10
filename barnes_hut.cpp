@@ -34,8 +34,8 @@ struct KernelArgs{
 };
 
 struct HostMemory {
-  float *mass, *posx, *posy, *posz, *velx, *vely, *velz, *child;
-  int* start;
+  float *mass, *posx, *posy, *posz, *velx, *vely, *velz;
+  int* start, *child;
   int step, max_depth, bottom, blocked;
 };
 
@@ -71,7 +71,7 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
       sizeof(int)*(num_nodes + 1), NULL, &err);
   CHK_ERR(err);
   args->child = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
-      sizeof(float)*8*(num_nodes + 1), NULL, &err);
+      sizeof(int)*8*(num_nodes + 1), NULL, &err);
   //Set the following alligned on WARP boundaries
   int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
     cl_buffer_region velxl_region = {0, 1*inc};
@@ -172,7 +172,7 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   if (host->vely == NULL) {fprintf(stderr, "cannot allocate vely\n");  exit(-1);}
   host->velz = (float *)malloc(sizeof(float) * num_bodies);
   if (host->velz == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
-  host->child = (float *)malloc(sizeof(float) * 8*(num_nodes + 1));
+  host->child = (int *)malloc(sizeof(int) * 8*(num_nodes + 1));
   if (host->child == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
@@ -185,7 +185,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(float)*8*(num_nodes + 1), host_memory->child, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(int)*8*(num_nodes + 1), host_memory->child, 0,
     NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->mass, true, 0, sizeof(float)*(num_nodes + 1), host_memory->mass, 0,
     NULL, NULL);
@@ -209,7 +209,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
   printf("bottom_num: %d \n", host_memory->bottom);
   printf("radius: %f \n", radius);
   int k = args->num_nodes * 8;
-  for(int i = 0; i < 8; i++) printf("child: %f \n", host_memory->child[k + i]);
+  for(int i = 0; i < 8; i++) printf("child: %d \n", host_memory->child[k + i]);
 }
 
 
@@ -238,17 +238,26 @@ int main (int argc, char *argv[])
   }
 
 
-  std::string bounding_box_kernel_str;
-  std::string bounding_box_name_str = std::string("bound_box");
-  std::string bounding_box_kernel_file = std::string("bound_box.cl");
-  cl_kernel bound_box;
+  std::string kernel_source_str;
 
-  readFile(bounding_box_kernel_file, bounding_box_kernel_str);
+  std::list<std::string> kernel_names;
+  
+  std::string bounding_box_name_str = std::string("bound_box");
+  std::string build_tree_name_str = std::string("build_tree");
+
+  kernel_names.push_back(bounding_box_name_str);
+  kernel_names.push_back(build_tree_name_str);
+
+  std::string kernel_file = std::string("bound_box.cl");
+
+  std::map<std::string, cl_kernel>kernel_map;
+
+  readFile(kernel_file, kernel_source_str);
 
   cl_vars_t cv;
   initialize_ocl(cv);
-  compile_ocl_program(bound_box, cv, bounding_box_kernel_str.c_str(),
-      bounding_box_name_str.c_str());
+  compile_ocl_program(kernel_map, cv, kernel_source_str.c_str(),
+      kernel_names);
 
   cl_int err = CL_SUCCESS;
 
@@ -263,10 +272,12 @@ int main (int argc, char *argv[])
 
 
   // Set the Kernel Arguements for bounding box
-  SetArgs(&bound_box, &args);
+  SetArgs(&kernel_map[bounding_box_name_str], &args);
 
-  err = clEnqueueNDRangeKernel(cv.commands, bound_box, 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
+  SetArgs(&kernel_map[build_tree_name_str], &args);
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
 
   DebuggingPrintValue(&cv, &args, &host_memory);
 
