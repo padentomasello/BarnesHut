@@ -1,3 +1,22 @@
+// TODO include file
+#define THREADS1 256  /* must be a power of 2 */
+#define THREADS2 1024
+#define THREADS3 1024
+#define THREADS4 256
+#define THREADS5 256
+#define THREADS6 512
+
+// block count = factor * #SMs
+#define FACTOR1 3
+#define FACTOR2 1
+#define FACTOR3 1  /* must all be resident at the same time */
+#define FACTOR4 1  /* must all be resident at the same time */
+#define FACTOR5 5
+#define FACTOR6 3
+
+#define WARPSIZE 32
+#define MAXDEPTH 32
+
 __kernel void bound_box(__global float *x_cords,
                         __global float *y_cords,
                         __global float* z_cords,
@@ -14,13 +33,7 @@ __kernel void bound_box(__global float *x_cords,
                         __global volatile int* stepd,
                         __global volatile int* bottomd,
                         __global volatile int* maxdepthd,
-                        __global volatile float* radius,
-                        __local float* sminx,
-                        __local float* smaxx,
-                        __local float* sminy,
-                        __local float* smaxy,
-                        __local float* sminz,
-                        __local float* smaxz,
+                        __global volatile float* radiusd,
                         const int num_bodies,
                         const int num_nodes)
 {
@@ -30,6 +43,7 @@ __kernel void bound_box(__global float *x_cords,
   size_t global_dim_size = get_global_size(0);
   size_t idx = get_global_id(0);
   float minx, maxx, miny, maxy, minz, maxz;
+  __local float sminx[THREADS1], smaxx[THREADS1], sminy[THREADS1], smaxy[THREADS1], sminz[THREADS1], smaxz[THREADS1];
   minx = maxx = x_cords[0];
   miny = maxy = y_cords[0];
   minz = maxz = z_cords[0];
@@ -88,7 +102,7 @@ __kernel void bound_box(__global float *x_cords,
 
       // Compute the radius
       val = max(maxx - minx, maxy - miny);
-      *radius = (float) (max(val, maxz - minz) * 0.5f);
+      *radiusd = (float) (max(val, maxz - minz) * 0.5f);
 
       int k = num_nodes;
       *bottomd = k;

@@ -8,7 +8,24 @@
 
 #include "clhelp.h"
 
+// TODO this used to be 512.
+#define THREADS1 256  /* must be a power of 2 */
+#define THREADS2 1024
+#define THREADS3 1024
+#define THREADS4 256
+#define THREADS5 256
+#define THREADS6 512
+
+// block count = factor * #SMs
+#define FACTOR1 3
+#define FACTOR2 1
+#define FACTOR3 1  /* must all be resident at the same time */
+#define FACTOR4 1  /* must all be resident at the same time */
+#define FACTOR5 5
+#define FACTOR6 3
+
 #define WARPSIZE 32
+#define MAXDEPTH 32
 
 int main (int argc, char *argv[])
 {
@@ -58,12 +75,12 @@ int main (int argc, char *argv[])
   child_h = (float *)malloc(sizeof(float) * 8*(num_nodes + 1));
   if (velz_h == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
   }
-
   for (int i = 0; i < num_bodies; i ++) {
     posx_h[i] = i;
     posy_h[i] = i;
     posz_h[i] = i;
   }
+
 
   std::string bounding_box_kernel_str;
   std::string bounding_box_name_str = std::string("bound_box");
@@ -81,7 +98,7 @@ int main (int argc, char *argv[])
          velxl, velyl, velzl, accxl, accyl, acczl, sortl, massl, countl, startl;
   cl_mem step_d, bottom_d, max_depth_d, radius_d;
 
-  // Create Scalar buffers? 
+  // Create Scalar buffers?
   cl_int err = CL_SUCCESS;
 
   step_d = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
@@ -94,22 +111,13 @@ int main (int argc, char *argv[])
       sizeof(float) * 1, NULL, &err);
   // Create Buffers  NOTE* These do need to be (num_nodes + 1)
   {
-  posxl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float) * (num_nodes + 1), NULL, &err);
+  posxl = clCreateBuffer(cv.context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
+      sizeof(float) * (num_nodes + 1), posx_h, &err);
   CHK_ERR(err);
-  posyl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), NULL, &err);
-  CHK_ERR(err);
-  poszl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), NULL, &err);
-  posxl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float) * (num_nodes + 1), NULL, &err);
-  CHK_ERR(err);
-  posyl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), NULL, &err);
-  CHK_ERR(err);
-  poszl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), NULL, &err);
+  poszl = clCreateBuffer(cv.context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
+      sizeof(float)*(num_nodes + 1), posy_h, &err);
+  posyl = clCreateBuffer(cv.context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
+      sizeof(float)*(num_nodes + 1), posz_h, &err);
   CHK_ERR(err);
   massl = clCreateBuffer(cv.context, CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), NULL, &err);
@@ -131,40 +139,28 @@ int main (int argc, char *argv[])
     cl_buffer_region accyl_region = {4*inc, 5*inc};
     cl_buffer_region acczl_region = {5*inc, 6*inc};
     cl_buffer_region sortl_region = {6*inc, 7*inc};
-    velxl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE, 
+    velxl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &velxl_region, &err);
-    velyl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE, 
+    velyl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &velyl_region, &err);
-    velzl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE, 
+    velzl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &velzl_region, &err);
-    accxl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE, 
+    accxl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &accxl_region, &err);
-    accyl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE, 
+    accyl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &accyl_region, &err);
-    acczl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE, 
+    acczl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &acczl_region, &err);
-    sortl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE, 
+    sortl = clCreateSubBuffer(childl, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &sortl_region, &err);
   }
 
-  // Write to buffers 
-  {
-  err = clEnqueueWriteBuffer(cv.commands, posxl, true, 0, sizeof(float)*(num_nodes + 1),
-			     posx_h, 0, NULL, NULL);
-  CHK_ERR(err);
-  err = clEnqueueWriteBuffer(cv.commands, posyl, true, 0, sizeof(float)*(num_nodes + 1),
-			     posy_h, 0, NULL, NULL);
-  CHK_ERR(err);
-
-  err = clEnqueueWriteBuffer(cv.commands, poszl, true, 0, sizeof(float)*(num_nodes + 1),
-           posz_h, 0, NULL, NULL);
-  CHK_ERR(err);
-  }
-
   /* Set local work size and global work sizes */
-  size_t local_work_size[1] = {256};
-  size_t global_work_size[1] = {1024};
-  size_t num_work_groups = 4;
+  // TODO CAN BE optimized.
+  size_t local_work_size[1] = {THREADS1};
+  size_t global_work_size[1] = {32*THREADS1};
+  size_t num_work_groups = 2;
+  //printf("WORK GORUP SIZE: %d", CL_DEVICE_MAX_WORK_GROUP_SIZE);
 
   // Used for global reduction in finding min and max of bounding box
   {
@@ -186,18 +182,18 @@ int main (int argc, char *argv[])
       1*sizeof(int), NULL, &err);
   }
   CHK_ERR(err);
-  // Global scalars //TODO is there a better way to do this? 
+  // Global scalars //TODO is there a better way to do this?
   // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
   int stepd_num = -1;
   int max_depth_num = -1;
   int bottom_num;
   int blocked_num = 0;
   err = clEnqueueWriteBuffer(cv.commands, blocked, true, 0, sizeof(int),
-			     &blocked_num, 0, NULL, NULL);
+           &blocked_num, 0, NULL, NULL);
   err = clEnqueueWriteBuffer(cv.commands, step_d, true, 0, sizeof(int),
-			     &stepd_num, 0, NULL, NULL);
+           &stepd_num, 0, NULL, NULL);
   err = clEnqueueWriteBuffer(cv.commands, max_depth_d, true, 0, sizeof(int),
-			     &max_depth_num, 0, NULL, NULL);
+           &max_depth_num, 0, NULL, NULL);
 
   // Set the Kernel Arguements for bounding box
   {
@@ -235,21 +231,9 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clSetKernelArg(bound_box, 16, sizeof(cl_mem), &radius_d);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 17, local_work_size[0]*sizeof(float), NULL);
+  err = clSetKernelArg(bound_box, 17, sizeof(int), &num_bodies);
   CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 18, local_work_size[0]*sizeof(float), NULL);
-  CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 19, local_work_size[0]*sizeof(float), NULL);
-  CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 20, local_work_size[0]*sizeof(float), NULL);
-  CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 21, local_work_size[0]*sizeof(float), NULL);
-  CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 22, local_work_size[0]*sizeof(float), NULL);
-  CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 23, sizeof(int), &num_bodies);
-  CHK_ERR(err);
-  err = clSetKernelArg(bound_box, 24, sizeof(int), &num_nodes);
+  err = clSetKernelArg(bound_box, 18, sizeof(int), &num_nodes);
   CHK_ERR(err);
   }
 
@@ -286,9 +270,6 @@ int main (int argc, char *argv[])
   printf("radius: %f \n", radius);
   int k = num_nodes * 8;
   for(int i = 0; i < 8; i++) printf("child: %f \n", child_h[k + i]);
-  clReleaseMemObject(posxl);
-  clReleaseMemObject(posyl);
-  clReleaseMemObject(poszl);
 
 
 }
