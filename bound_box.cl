@@ -158,6 +158,7 @@ __kernel void build_tree(__global float *x_cords,
   int depth;
   global_x_maxs[0] = 0;
 
+
   while (i < num_bodies) {
     if (skip != 0) {
       skip = 0;
@@ -173,7 +174,7 @@ __kernel void build_tree(__global float *x_cords,
       if (rootz < pz) j += 4;
     }
     ch = child[n*8 + j];
-    
+
     while (ch >= num_bodies) {
       n = ch;
       depth++;
@@ -189,20 +190,29 @@ __kernel void build_tree(__global float *x_cords,
       global_x_maxs[0] = -1;
       return;
     }
+    }
     locked = n*8+j;
     if (ch == atomic_cmpxchg(&child[locked], ch, -2)) {
+       child[locked] = i;
+       return;
+     }
+ }
+
+    /*
       if(ch == -1) {
         child[locked] = i;
        } else {
         patch = -1;
+        i += inc;
         // create new cell(s) and insert the old and new body
+        }
         do {
           j++;
-          
+
           depth++;
           cell = atomic_dec(bottom) - 1;
           if (cell <= num_bodies) {
-            depth = 1/0;
+            //depth = 1/0;
             bottom = num_nodes;
           }
           patch = max(patch, cell);
@@ -240,7 +250,7 @@ __kernel void build_tree(__global float *x_cords,
           ch = child[n*8+j];
         } while (ch >= 0);
         x_cords[n*8+j] = i;
-        child[locked] = patch;
+        //child[locked] = patch;
       }
       localmaxdepth = max(depth, localmaxdepth);
       i += inc;
@@ -314,8 +324,8 @@ __kernel void build_tree(__global float *x_cords,
       localmaxdepth = max(depth, localmaxdepth);
       i += inc;  // move on to next body
       skip = 1;
-    }
-    */
+      */
   //  __syncthreads();  // throttle
   // record maximum tree depth
-  /*atomicMax((int *)&maxdepthd, localmaxdepth); */
+  /*atomicMax((int *)&maxdepthd, localmaxdepth);
+  */
