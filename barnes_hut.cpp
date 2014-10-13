@@ -290,8 +290,8 @@ int main (int argc, char *argv[])
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  //SetArgs(&kernel_map[build_tree_name_str], &args);
-  //err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  SetArgs(&kernel_map[build_tree_name_str], &args);
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
 
   DebuggingPrintValue(&cv, &args, &host_memory);
 

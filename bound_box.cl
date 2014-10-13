@@ -190,12 +190,12 @@ __kernel void build_tree(__global float *x_cords,
       global_x_maxs[0] = -1;
       return;
     }
-    }
     locked = n*8+j;
     if (ch == atomic_cmpxchg(&child[locked], ch, -2)) {
        child[locked] = i;
        return;
      }
+   }
  }
 
     /*
