@@ -200,7 +200,7 @@ __kernel void build_tree(__global float *x_cords,
         // create new cell(s) and insert the old and new body
         do {
           depth++;
-          cell = atomic_dec(&bottomd) - 1;
+          cell = atomic_dec(bottom) - 1;
           //if (cell <= num_bodies) {
             //bottomd = num_nodes;
           //}
