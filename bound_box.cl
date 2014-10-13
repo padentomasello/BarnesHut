@@ -192,11 +192,58 @@ __kernel void build_tree(__global float *x_cords,
     }
     locked = n*8+j;
     if (ch == atomic_cmpxchg(&child[locked], ch, -2)) {
-       child[locked] = i;
-       return;
-     }
-   }
- }
+      if(ch == -1) {
+        // if null, just insert the new body
+        child[locked] = i;
+      } else {
+        patch = -1;
+        // create new cell(s) and insert the old and new body
+        do {
+          depth++;
+          cell = atomic_dec(&bottomd) - 1;
+          //if (cell <= num_bodies) {
+            //bottomd = num_nodes;
+          //}
+          patch = max(patch, cell);
+
+          x = (j & 1) * r;
+          y = ((j >> 1) & 1) * r;
+          z = ((j >> 2) & 1) * r;
+          r *= 0.5f;
+
+          mass[cell] = -1.0f;
+          start[cell] = -1;
+          x = x_cords[cell] = x_cords[n] - r + x;
+          y = y_cords[cell] = y_cords[n] - r + y;
+          z = z_cords[cell] = z_cords[n] - r + z;
+          for (int k = 0; k < 8; k++) child[cell*8+k] = -1;
+
+          if (patch != cell) {
+            child[n*8+j] = cell;
+          }
+
+          j = 0;
+          if (x < x_cords[ch]) j = 1;
+          if (y < y_cords[ch]) j += 2;
+          if (z < z_cords[ch]) j += 4;
+          child[cell*8+j] = ch;
+
+          n = cell;
+          j = 0;
+          if (x < px) j = 1;
+          if (y < py) j += 2;
+          if (z < pz) j += 4;
+
+          ch = child[n*8+j];
+        } while (ch >= 0);
+          /*child[n*8+j] = i;*/
+       }
+       /*[>localmaxdepth = max(depth, localmaxdepth);<]*/
+      i += inc;  // move on to next body
+      skip = 1;
+    }
+  }
+}
 
     /*
       if(ch == -1) {
