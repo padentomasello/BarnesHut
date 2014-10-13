@@ -43,6 +43,20 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
   cl_int err;
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
+  // TODO This shouldn't be hardcodes
+  int num_work_groups = 32;
+  args->minx = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
+      sizeof(float) * num_work_groups, NULL, &err);
+  args->maxx = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
+      sizeof(float) * num_work_groups, NULL, &err);
+  args->miny = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
+      sizeof(float) * num_work_groups, NULL, &err);
+  args->maxy = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
+      sizeof(float) * num_work_groups, NULL, &err);
+  args->minz = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
+      sizeof(float) * num_work_groups, NULL, &err);
+  args->maxz = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
+      sizeof(float) * num_work_groups, NULL, &err);
   args->step = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(int) * 1, NULL, &err);
   args->bottom = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
@@ -276,8 +290,8 @@ int main (int argc, char *argv[])
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  SetArgs(&kernel_map[build_tree_name_str], &args);
-  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  //SetArgs(&kernel_map[build_tree_name_str], &args);
+  //err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
 
   DebuggingPrintValue(&cv, &args, &host_memory);
 
