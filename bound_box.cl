@@ -191,11 +191,17 @@ __kernel void build_tree(__global float *x_cords,
       return;
     }
     locked = n*8+j;
-    if (ch == atomic_cmpxchg(&child[locked], ch, -2)) {
+    int test = child[locked];
+    if (ch == -1 & ch == atomic_cmpxchg(&child[locked], ch, -2)) {
       if(ch == -1) {
         // if null, just insert the new body
+        //if (i != 5) {
         child[locked] = i;
+        //x_cords[num_nodes] = locked;
+        mem_fence(CLK_GLOBAL_MEM_FENCE);
       } else {
+        z_cords[num_nodes] = locked;
+        y_cords[num_nodes] = 1000;
         patch = -1;
         // create new cell(s) and insert the old and new body
         do {
@@ -236,7 +242,8 @@ __kernel void build_tree(__global float *x_cords,
 
           ch = child[n*8+j];
         } while (ch >= 0);
-          /*child[n*8+j] = i;*/
+          child[n*8+j] = i;
+          child[locked] = patch;
        }
        /*[>localmaxdepth = max(depth, localmaxdepth);<]*/
       i += inc;  // move on to next body

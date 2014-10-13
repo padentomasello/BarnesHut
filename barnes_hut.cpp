@@ -223,7 +223,9 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
   printf("bottom_num: %d \n", host_memory->bottom);
   printf("radius: %f \n", radius);
   int k = args->num_nodes * 8;
+  printf("child num: %d \n", host_memory->child[32767]);
   for(int i = 0; i < 8; i++) printf("child: %d \n", host_memory->child[k + i]);
+  for(int i = 0; i < 8; i++) printf("child: %d \n", k+i);
 }
 
 
