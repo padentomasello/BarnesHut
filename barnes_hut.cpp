@@ -87,28 +87,28 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
   args->child = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(int)*8*(num_nodes + 1), NULL, &err);
   //Set the following alligned on WARP boundaries
-  int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
-    cl_buffer_region velxl_region = {0, 1*inc};
-    cl_buffer_region velyl_region = {1*inc, 2*inc};
-    cl_buffer_region velzl_region = {2*inc, 3*inc};
-    cl_buffer_region accxl_region = {3*inc, 4*inc};
-    cl_buffer_region accyl_region = {4*inc, 5*inc};
-    cl_buffer_region acczl_region = {5*inc, 6*inc};
-    cl_buffer_region sortl_region = {6*inc, 7*inc};
-    args->velx = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
-        CL_BUFFER_CREATE_TYPE_REGION, &velxl_region, &err);
-    args->vely = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
-        CL_BUFFER_CREATE_TYPE_REGION, &velyl_region, &err);
-    args->velz = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
-        CL_BUFFER_CREATE_TYPE_REGION, &velzl_region, &err);
-    args->accx = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
-        CL_BUFFER_CREATE_TYPE_REGION, &accxl_region, &err);
-    args->accy = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
-        CL_BUFFER_CREATE_TYPE_REGION, &accyl_region, &err);
-    args->accz = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
-        CL_BUFFER_CREATE_TYPE_REGION, &acczl_region, &err);
-    args->sort = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
-        CL_BUFFER_CREATE_TYPE_REGION, &sortl_region, &err);
+  //int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
+    //cl_buffer_region velxl_region = {0, 1*inc};
+    //cl_buffer_region velyl_region = {1*inc, 2*inc};
+    //cl_buffer_region velzl_region = {2*inc, 3*inc};
+    //cl_buffer_region accxl_region = {3*inc, 4*inc};
+    //cl_buffer_region accyl_region = {4*inc, 5*inc};
+    //cl_buffer_region acczl_region = {5*inc, 6*inc};
+    //cl_buffer_region sortl_region = {6*inc, 7*inc};
+    //args->velx = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
+        //CL_BUFFER_CREATE_TYPE_REGION, &velxl_region, &err);
+    //args->vely = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
+        //CL_BUFFER_CREATE_TYPE_REGION, &velyl_region, &err);
+    //args->velz = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
+        //CL_BUFFER_CREATE_TYPE_REGION, &velzl_region, &err);
+    //args->accx = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
+        //CL_BUFFER_CREATE_TYPE_REGION, &accxl_region, &err);
+    //args->accy = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
+        //CL_BUFFER_CREATE_TYPE_REGION, &accyl_region, &err);
+    //args->accz = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
+        //CL_BUFFER_CREATE_TYPE_REGION, &acczl_region, &err);
+    //args->sort = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
+        //CL_BUFFER_CREATE_TYPE_REGION, &sortl_region, &err);
   
   // Global scalars //TODO is there a better way to do this?
   // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
@@ -193,6 +193,7 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
 void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory){
   cl_int err;
   int num_nodes = args->num_nodes;
+  int num_bodes = args->num_bodies;
   err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posx, 0,
     NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posy, 0,
@@ -215,7 +216,9 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
   CHK_ERR(err);
 
   printf("x: %f\n", host_memory->posx[num_nodes]);
+
   printf("y: %f \n", host_memory->posy[num_nodes]);
+  printf("y: %f \n", host_memory->posy[0]);
   printf("z: %f \n", host_memory->posz[num_nodes]);
   printf("mass: %f \n", host_memory->mass[num_nodes]);
   printf("startd: %d \n", host_memory->start[num_nodes]);
@@ -232,7 +235,8 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 int main (int argc, char *argv[])
 {
   //register double rsc, vsc, r, v, x, y, z, sq, scale;
-  int num_bodies =10;
+  int num_bodies_split = 2;
+  int num_bodies = num_bodies_split<<3;
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
@@ -247,10 +251,14 @@ int main (int argc, char *argv[])
   HostMemory host_memory;
   AllocateHostMemory(&host_memory, num_nodes, num_bodies);
 
-  for (int i = 0; i < num_bodies; i ++) {
-    host_memory.posx[i] = i;
-    host_memory.posy[i] = i;
-    host_memory.posz[i] = i;
+  for (int i = 0; i < num_bodies_split; i ++) {
+    for (int k = 0; k < num_bodies_split; k ++) {
+      for (int j = 0; j < num_bodies_split; j++) {
+        host_memory.posx[i+k+j] = i;
+        host_memory.posy[i+k+j] = k;
+        host_memory.posz[i+k+j] = j;
+      }
+    }
   }
 
 
@@ -293,9 +301,21 @@ int main (int argc, char *argv[])
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   SetArgs(&kernel_map[build_tree_name_str], &args);
+  global_work_size[0] = THREADS1;
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  CHK_ERR(err);
 
   DebuggingPrintValue(&cv, &args, &host_memory);
+  clReleaseMemObject(args.posx);
+  clReleaseMemObject(args.posy);
+  clReleaseMemObject(args.posz);
+  clReleaseMemObject(args.child);
+struct KernelArgs{
+  cl_mem posx, posy, posz, child, mass, start, minx, maxx, miny, maxy, minz, maxz, blocked, step, bottom, max_depth, radius, count;
+  cl_mem velx, vely, velz, accx, accy, accz, sort;
+  int num_bodies, num_nodes;
+  int num_args;
+};
 
 }
 
