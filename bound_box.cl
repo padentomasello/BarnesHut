@@ -157,7 +157,9 @@ __kernel void build_tree(__global float *x_cords,
   int ch, n, cell, locked, patch;
   int depth;
 
-
+  //x_cords[num_nodes] = 1/0;
+  //x_cords[num_nodes] = 100;
+  //y_cords[num_nodes] = 100;
   while (i < num_bodies) {
     if (skip != 0) {
       skip = 0;
