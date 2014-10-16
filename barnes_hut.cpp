@@ -302,12 +302,15 @@ int main (int argc, char *argv[])
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  //clFlush(cv.commands);
+  //err = clFinish(cv.commands);
+  CHK_ERR(err);
   //DebuggingPrintValue(&cv, &args, &host_memory);
   SetArgs(&kernel_map[build_tree_name_str], &args);
+  CHK_ERR(err);
   global_work_size[0] = THREADS1;
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  clFinish(cv.commands);
+  CHK_ERR(err);
+  //clFinish(cv.commands);
 
   DebuggingPrintValue(&cv, &args, &host_memory);
 

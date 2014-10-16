@@ -157,7 +157,7 @@ __kernel void build_tree(__global float *x_cords,
   int ch, n, cell, locked, patch;
   int depth;
 
-  x_cords[num_nodes] = 1/0;
+  //x_cords[num_nodes] = 1/0;
   x_cords[num_nodes] = 100;
   y_cords[num_nodes] = 100;
   while (i < num_bodies) {
@@ -196,7 +196,7 @@ __kernel void build_tree(__global float *x_cords,
       if(ch == -1) {
         child[locked] = i;
         mem_fence(CLK_GLOBAL_MEM_FENCE);
-    } else {
+      } else {
         patch = -1;
         // create new cell(s) and insert the old and new body
         do {
