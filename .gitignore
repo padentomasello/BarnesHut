@@ -11,3 +11,12 @@ barnes_hut
 barnes_hut.o
 *.swp
 *.swo
+.barnes_hut.cpp.swj
+.barnes_hut.cpp.swk
+.barnes_hut.cpp.swl
+.barnes_hut.cpp.swm
+.barnes_hut.cpp.swn
+.bound_box.cl.swk
+.bound_box.cl.swl
+.bound_box.cl.swm
+.bound_box.cl.swn

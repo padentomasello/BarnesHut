@@ -231,6 +231,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
+  //CL_LOG_ERRORS=stdout;
   //register double rsc, vsc, r, v, x, y, z, sq, scale;
   int split = 2;
   int num_bodies = pow(3, 3);
@@ -248,20 +249,20 @@ int main (int argc, char *argv[])
   HostMemory host_memory;
   AllocateHostMemory(&host_memory, num_nodes, num_bodies);
 
-  for (int i = 0; i < split; i ++) {
-    for (int j = 0; j < split; j++) {
-      for (int k = 0; k < split; k++) {
-        host_memory.posx[i*(split*2)+j*(split)+k] = i+j+k;
-        host_memory.posy[i*(split*2)+j*(split)+k] = i+j+k;
-        host_memory.posz[i*(split*2)+j*(split)+k] = i+j+k;
-      }
-    }
-  }
-  //for (int i = 0; i < num_bodies; i++) {
-    //host_memory.posx[i] = i;
-    //host_memory.posy[i] = i;
-    //host_memory.posz[i] = i;
+  //for (int i = 0; i < split; i ++) {
+    //for (int j = 0; j < split; j++) {
+      //for (int k = 0; k < split; k++) {
+        //host_memory.posx[i*(split*2)+j*(split)+k] = i+j+k;
+        //host_memory.posy[i*(split*2)+j*(split)+k] = i+j+k;
+        //host_memory.posz[i*(split*2)+j*(split)+k] = i+j+k;
+      //}
+    //}
   //}
+  for (int i = 0; i < num_bodies; i++) {
+    host_memory.posx[i] = i;
+    host_memory.posy[i] = i;
+    host_memory.posz[i] = i;
+  }
 
 
   std::string kernel_source_str;
@@ -302,7 +303,7 @@ int main (int argc, char *argv[])
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  //err = clFinish(cv.commands);
+  err = clFinish(cv.commands);
   CHK_ERR(err);
   //DebuggingPrintValue(&cv, &args, &host_memory);
   SetArgs(&kernel_map[build_tree_name_str], &args);
@@ -310,7 +311,8 @@ int main (int argc, char *argv[])
   global_work_size[0] = THREADS1;
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  //clFinish(cv.commands);
+  err = clFinish(cv.commands);
+  CHK_ERR(err);
 
   DebuggingPrintValue(&cv, &args, &host_memory);
 

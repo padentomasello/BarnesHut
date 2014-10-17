@@ -158,9 +158,9 @@ __kernel void build_tree(__global float *x_cords,
   int depth;
 
   //x_cords[num_nodes] = 1/0;
-  x_cords[num_nodes] = 100;
-  y_cords[num_nodes] = 100;
-  while (i < num_bodies) {
+  /*x_cords[num_nodes] = 100;*/
+  /*y_cords[num_nodes] = 100;*/
+  if (i < num_bodies) {
     if (skip != 0) {
       skip = 0;
       px = x_cords[i];
@@ -238,78 +238,78 @@ __kernel void build_tree(__global float *x_cords,
           ch = child[n*8+j];
         } while (ch >= 0);
           child[n*8+j] = i;
+          mem_fence(CLK_GLOBAL_MEM_FENCE);
           child[locked] = patch;
           mem_fence(CLK_GLOBAL_MEM_FENCE);
        }
-       /*[>localmaxdepth = max(depth, localmaxdepth);<]*/
+       //[>[>localmaxdepth = max(depth, localmaxdepth);<]<]
       i += inc;  // move on to next body
       skip = 1;
-      } 
-    }
-    barrier(CLK_GLOBAL_MEM_FENCE);
-  }
-}
-
-    /*
-      if(ch == -1) {
-        child[locked] = i;
-       } else {
-        patch = -1;
-        i += inc;
-        // create new cell(s) and insert the old and new body
-        }
-        do {
-          j++;
-
-          depth++;
-          cell = atomic_dec(bottom) - 1;
-          if (cell <= num_bodies) {
-            //depth = 1/0;
-            bottom = num_nodes;
-          }
-          patch = max(patch, cell);
-
-          x = (j & 1) * r;
-          y = ((j >> 1) & 1) * r;
-          z = ((j >> 2) & 1) * r;
-          r *= 0.5f;
-
-
-          mass[cell] = -1.0f;
-          start[cell] = -1;
-          x = x_cords[cell] = x_cords[n] - r + x;
-          y = y_cords[cell] = y_cords[n] - r + y;
-          z = z_cords[cell] = z_cords[n] - r + z;
-          // TODO move k to top declaration
-          for (int k = 0; k < 8; k++) child[cell*8+k] = -1;
-
-          if (patch != cell) {
-            child[n*8+j] = cell;
-          }
-
-          j = 0;
-          if (x < x_cords[ch]) j = 1;
-          if (y < y_cords[ch]) j += 2;
-          if (z < z_cords[ch]) j += 4;
-          child[cell*8+j] = ch;
-
-          n = cell;
-          j = 0;
-          if (x < px) j = 1;
-          if (y < py) j += 2;
-          if (z < pz) j += 4;
-
-          ch = child[n*8+j];
-        } while (ch >= 0);
-        x_cords[n*8+j] = i;
-        //child[locked] = patch;
       }
-      localmaxdepth = max(depth, localmaxdepth);
-      i += inc;
-      skip = 1;
     }
+      //barrier(CLK_GLOBAL_MEM_FENCE);
   }
 }
+
+    /*/**/
+      /*if(ch == -1) {*/
+        /*child[locked] = i;*/
+       /*} else {*/
+        /*patch = -1;*/
+        /*i += inc;*/
+        /*// create new cell(s) and insert the old and new body*/
+        /*}*/
+        /*do {*/
+          /*j++;*/
+
+          /*depth++;*/
+          /*cell = atomic_dec(bottom) - 1;*/
+          /*if (cell <= num_bodies) {*/
+            /*//depth = 1/0;*/
+            /*bottom = num_nodes;*/
+          /*}*/
+          /*patch = max(patch, cell);*/
+
+          /*x = (j & 1) * r;*/
+          /*y = ((j >> 1) & 1) * r;*/
+          /*z = ((j >> 2) & 1) * r;*/
+          /*r *= 0.5f;*/
+
+
+          /*mass[cell] = -1.0f;*/
+          /*start[cell] = -1;*/
+          /*x = x_cords[cell] = x_cords[n] - r + x;*/
+          /*y = y_cords[cell] = y_cords[n] - r + y;*/
+          /*z = z_cords[cell] = z_cords[n] - r + z;*/
+          /*// TODO move k to top declaration*/
+          /*for (int k = 0; k < 8; k++) child[cell*8+k] = -1;*/
+
+          /*if (patch != cell) {*/
+            /*child[n*8+j] = cell;*/
+          /*}*/
+
+          /*j = 0;*/
+          /*if (x < x_cords[ch]) j = 1;*/
+          /*if (y < y_cords[ch]) j += 2;*/
+          /*if (z < z_cords[ch]) j += 4;*/
+          /*child[cell*8+j] = ch;*/
+
+          /*n = cell;*/
+          /*j = 0;*/
+          /*if (x < px) j = 1;*/
+          /*if (y < py) j += 2;*/
+          /*if (z < pz) j += 4;*/
+
+          /*ch = child[n*8+j];*/
+        /*} while (ch >= 0);*/
+        /*x_cords[n*8+j] = i;*/
+        /*//child[locked] = patch;*/
+      /*}*/
+      /*localmaxdepth = max(depth, localmaxdepth);*/
+      /*i += inc;*/
+      /*skip = 1;*/
+    /*}*/
+  /*}*/
     /*
     while (ch >= num_bodies) {
       n = ch;
