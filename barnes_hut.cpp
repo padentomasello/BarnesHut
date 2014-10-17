@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <cmath>
+#include <iostream>
 #include <unistd.h>
 
 #include "clhelp.h"
@@ -224,8 +225,15 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
   printf("radius: %f \n", radius);
   int k = args->num_nodes * 8;
   printf("child num: %d \n", host_memory->child[32767]);
-  for(int i = 0; i < 8; i++) printf("child: %d \n", host_memory->child[k + i]);
-  for(int i = 0; i < 8; i++) printf("child: %d \n", k+i);
+  for(int i = 0; i < 8; i++) {
+    int index = host_memory->child[k + i];
+    printf("child: %d \n", index);
+    if (index != -1) {
+    printf("child x: %f \n", host_memory->posx[index]);
+    printf("child y: %f \n", host_memory->posy[index]);
+    printf("child z: %f \n", host_memory->posz[index]);
+    }
+  }
 }
 
 
@@ -233,8 +241,8 @@ int main (int argc, char *argv[])
 {
   //CL_LOG_ERRORS=stdout;
   //register double rsc, vsc, r, v, x, y, z, sq, scale;
-  int split = 2;
-  int num_bodies = pow(3, 3);
+  int split = 4;
+  int num_bodies = pow(split, 3);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
@@ -249,20 +257,22 @@ int main (int argc, char *argv[])
   HostMemory host_memory;
   AllocateHostMemory(&host_memory, num_nodes, num_bodies);
 
-  //for (int i = 0; i < split; i ++) {
-    //for (int j = 0; j < split; j++) {
-      //for (int k = 0; k < split; k++) {
-        //host_memory.posx[i*(split*2)+j*(split)+k] = i+j+k;
-        //host_memory.posy[i*(split*2)+j*(split)+k] = i+j+k;
-        //host_memory.posz[i*(split*2)+j*(split)+k] = i+j+k;
-      //}
-    //}
-  //}
-  for (int i = 0; i < num_bodies; i++) {
-    host_memory.posx[i] = i;
-    host_memory.posy[i] = i;
-    host_memory.posz[i] = i;
+  for (int i = 0; i < split; i++) {
+    for (int j = 0; j < split; j++) {
+      for (int k = 0; k < split; k++) {
+        host_memory.posx[i*(split*2)+j*(split)+k] = i;
+        host_memory.posy[i*(split*2)+j*(split)+k] = j;
+        host_memory.posz[i*(split*2)+j*(split)+k] = k;
+        std::cout << "(" << i << ", " << j << ", " << k << ")" << std::endl;
+      }
+    }
   }
+  //for (int i = 0; i < num_bodies; i++) {
+    //std::cout << i << std::endl;
+    //host_memory.posx[i] = i;
+    //host_memory.posy[i] = i;
+    //host_memory.posz[i] = i;
+  //}
 
 
   std::string kernel_source_str;
@@ -305,7 +315,7 @@ int main (int argc, char *argv[])
   CHK_ERR(err);
   err = clFinish(cv.commands);
   CHK_ERR(err);
-  //DebuggingPrintValue(&cv, &args, &host_memory);
+  DebuggingPrintValue(&cv, &args, &host_memory);
   SetArgs(&kernel_map[build_tree_name_str], &args);
   CHK_ERR(err);
   global_work_size[0] = THREADS1;

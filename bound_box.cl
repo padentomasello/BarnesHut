@@ -69,7 +69,7 @@ __kernel void bound_box(__global float *x_cords,
   smaxz[tid] = maxz;
   barrier(CLK_LOCAL_MEM_FENCE);
 
-  for(int step = dim / 2; step > 0; step = step / 2) {
+  for(int step = (dim / 2); step > 0; step = step / 2) {
   	if (tid < step) {
 		sminx[tid] = minx = min(sminx[tid] , sminx[tid + step]);
     smaxx[tid] = maxx = max(smaxx[tid], smaxx[tid + step]);
@@ -114,8 +114,8 @@ __kernel void bound_box(__global float *x_cords,
 
 
       x_cords[num_nodes] = (minx + maxx) * 0.5f;
-      x_cords[num_nodes] = (minx + maxx) * 0.5f;
       y_cords[num_nodes] = (miny + maxy) * 0.5f;
+      //z_cords[num_nodes] = maxy; // (minz + maxz) * 0.5f;
       z_cords[num_nodes] = (minz + maxz) * 0.5f;
       k *= 8;
       for (int i = 0; i < 8; i++) childl[k + i] = -1.0;
@@ -157,9 +157,6 @@ __kernel void build_tree(__global float *x_cords,
   int ch, n, cell, locked, patch;
   int depth;
 
-  //x_cords[num_nodes] = 1/0;
-  /*x_cords[num_nodes] = 100;*/
-  /*y_cords[num_nodes] = 100;*/
   if (i < num_bodies) {
     if (skip != 0) {
       skip = 0;
@@ -245,9 +242,11 @@ __kernel void build_tree(__global float *x_cords,
        //[>[>localmaxdepth = max(depth, localmaxdepth);<]<]
       i += inc;  // move on to next body
       skip = 1;
+      } else {
+        x_cords[num_nodes] = 100;
       }
     }
-      //barrier(CLK_GLOBAL_MEM_FENCE);
+     mem_fence(CLK_GLOBAL_MEM_FENCE);
   }
 }
 
