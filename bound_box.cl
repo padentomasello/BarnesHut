@@ -123,13 +123,6 @@ __kernel void bound_box(__global float *x_cords,
     }
   }
 }
-/*inline void strong_global_mem_fence_ptx()*/
-/*{*/
-    /*asm("{\n\t"*/
-        /*"membar.gl;\n\t"*/
-        /*"}\n\t"*/
-        /*);*/
-/*}*/
 
 __kernel void build_tree(__global volatile float *x_cords,
                         __global float *y_cords,
@@ -195,10 +188,10 @@ __kernel void build_tree(__global volatile float *x_cords,
     if (ch != -2 ) {
     locked = n*8+j;
     //int test = child[locked];
-    mem_fence(CLK_GLOBAL_MEM_FENCE);
+    //mem_fence(CLK_GLOBAL_MEM_FENCE);
     /*return;*/
     if (ch == atomic_cmpxchg(&child[locked], ch, -2)) {
-      mem_fence(CLK_GLOBAL_MEM_FENCE);
+      //mem_fence(CLK_GLOBAL_MEM_FENCE);
 
       if(ch == -1) {
         child[locked] = i;

@@ -245,7 +245,6 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     NULL, NULL);
   CHK_ERR(err);
 
-  CheckTree(num_nodes, host_memory, num_bodies);
   printf("x: %f\n",host_memory->posx[num_nodes]);
   printf("y: %f \n", host_memory->posy[num_nodes]);
   printf("z: %f \n", host_memory->posz[num_nodes]);
@@ -264,12 +263,13 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     printf("child z: %f \n", host_memory->posz[index]);
     }
   }
+  CheckTree(num_nodes, host_memory, num_bodies);
 }
 
 
 int main (int argc, char *argv[])
 {
-  int split = 100;
+  int split = 150;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -326,23 +326,23 @@ int main (int argc, char *argv[])
   /* Set local work size and global work sizes */
   // TODO CAN BE optimized.
   size_t local_work_size[1] = {THREADS1};
-  size_t global_work_size[1] = {64*THREADS1};
+  size_t global_work_size[1] = {THREADS1};
   size_t num_work_groups = 2;
 
 
   // Set the Kernel Arguements for bounding box
   SetArgs(&kernel_map[bounding_box_name_str], &args);
+  SetArgs(&kernel_map[build_tree_name_str], &args);
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  CHK_ERR(err);
-  err = clFinish(cv.commands);
-  CHK_ERR(err);
-  DebuggingPrintValue(&cv, &args, &host_memory);
-  SetArgs(&kernel_map[build_tree_name_str], &args);
-  CHK_ERR(err);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  err = clFinish(cv.commands);
+  //err = clFinish(cv.commands);
+  CHK_ERR(err);
+  //DebuggingPrintValue(&cv, &args, &host_memory);
+  CHK_ERR(err);
+  CHK_ERR(err);
+  //err = clFinish(cv.commands);
   CHK_ERR(err);
 
   DebuggingPrintValue(&cv, &args, &host_memory);
