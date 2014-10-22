@@ -72,9 +72,9 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
       sizeof(float) * (num_nodes + 1), host_memory->posx, &err);
   CHK_ERR(err);
   args->posz = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), host_memory->posy, &err);
-  args->posy = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), host_memory->posz, &err);
+  args->posy = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
+      sizeof(float)*(num_nodes + 1), host_memory->posy, &err);
   CHK_ERR(err);
   args->mass = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), NULL, &err);
@@ -110,7 +110,7 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
         CL_BUFFER_CREATE_TYPE_REGION, &acczl_region, &err);
     args->sort = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &sortl_region, &err);
-  
+
   // Global scalars //TODO is there a better way to do this?
   // TODO Would it be more efficient to use an InitializationKernel? See Cuda implementation around line 82
   args->blocked = clCreateBuffer(cv->context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
@@ -194,10 +194,11 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
 void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory){
   cl_int err;
   int num_nodes = args->num_nodes;
-  err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posx, 0,
-    NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posy, 0,
-    NULL, NULL);
+  int num_bodies = args->num_bodies;
+  err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0,
+      sizeof(float)*(num_nodes + 1), host_memory->posx, 0, NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0, 
+      sizeof(float)*(num_nodes + 1), host_memory->posy, 0, NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
     NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(int)*8*(num_nodes + 1), host_memory->child, 0,
@@ -215,7 +216,9 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     NULL, NULL);
   CHK_ERR(err);
 
-  printf("x: %f\n", host_memory->posx[num_nodes]);
+  for (int i= 0; i < num_bodies; i++) {
+  printf("i: %d, x: %f\n", i, host_memory->posx[i]);
+  }
   printf("y: %f \n", host_memory->posy[num_nodes]);
   printf("z: %f \n", host_memory->posz[num_nodes]);
   printf("mass: %f \n", host_memory->mass[num_nodes]);
@@ -243,6 +246,7 @@ int main (int argc, char *argv[])
   //register double rsc, vsc, r, v, x, y, z, sq, scale;
   int split = 4;
   int num_bodies = pow(split, 3);
+  printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
@@ -260,15 +264,16 @@ int main (int argc, char *argv[])
   for (int i = 0; i < split; i++) {
     for (int j = 0; j < split; j++) {
       for (int k = 0; k < split; k++) {
-        host_memory.posx[i*(split*2)+j*(split)+k] = i;
-        host_memory.posy[i*(split*2)+j*(split)+k] = j;
-        host_memory.posz[i*(split*2)+j*(split)+k] = k;
-        std::cout << "(" << i << ", " << j << ", " << k << ")" << std::endl;
+        host_memory.posx[i*(split*2)+j*(split)+k] = i + 0.01;
+        host_memory.posy[i*(split*2)+j*(split)+k] = j + 0.01;
+        host_memory.posz[i*(split*2)+j*(split)+k] = k + 0.01;
+        std::cout << "(" <<  host_memory.posx[i*(split*2)+j*(split)+k] << ", " 
+          << host_memory.posy[i*(split*2)+j*(split)+k] << ", " << host_memory.posz[i*(split*2)+j*(split)+k] << ")" << std::endl;
       }
     }
   }
   //for (int i = 0; i < num_bodies; i++) {
-    //std::cout << i << std::endl;
+    ////std::cout << i << std::endl;
     //host_memory.posx[i] = i;
     //host_memory.posy[i] = i;
     //host_memory.posz[i] = i;
@@ -278,7 +283,7 @@ int main (int argc, char *argv[])
   std::string kernel_source_str;
 
   std::list<std::string> kernel_names;
-  
+
   std::string bounding_box_name_str = std::string("bound_box");
   std::string build_tree_name_str = std::string("build_tree");
 
@@ -299,6 +304,7 @@ int main (int argc, char *argv[])
   cl_int err = CL_SUCCESS;
 
   CreateMemBuffer(&cv, &args, &host_memory);
+  DebuggingPrintValue(&cv, &args, &host_memory);
 
 
   /* Set local work size and global work sizes */
@@ -311,20 +317,20 @@ int main (int argc, char *argv[])
   // Set the Kernel Arguements for bounding box
   SetArgs(&kernel_map[bounding_box_name_str], &args);
 
-  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  //err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   err = clFinish(cv.commands);
   CHK_ERR(err);
-  DebuggingPrintValue(&cv, &args, &host_memory);
+  //DebuggingPrintValue(&cv, &args, &host_memory);
   SetArgs(&kernel_map[build_tree_name_str], &args);
   CHK_ERR(err);
   global_work_size[0] = THREADS1;
-  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  //err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   err = clFinish(cv.commands);
   CHK_ERR(err);
 
-  DebuggingPrintValue(&cv, &args, &host_memory);
+  //DebuggingPrintValue(&cv, &args, &host_memory);
 
 }
 

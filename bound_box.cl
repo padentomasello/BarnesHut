@@ -48,6 +48,9 @@ __kernel void bound_box(__global float *x_cords,
   minx = maxx = x_cords[0];
   miny = maxy = y_cords[0];
   minz = maxz = z_cords[0];
+  if (idx < num_bodies) {
+    printf("idx: %d, x: %f\n", idx, x_cords[idx]);
+  }
   float val;
   int inc = global_dim_size;
   for (int j = idx; j < num_bodies; j += inc) {
@@ -123,8 +126,15 @@ __kernel void bound_box(__global float *x_cords,
     }
   }
 }
+/*inline void strong_global_mem_fence_ptx()*/
+/*{*/
+    /*asm("{\n\t"*/
+        /*"membar.gl;\n\t"*/
+        /*"}\n\t"*/
+        /*);*/
+/*}*/
 
-__kernel void build_tree(__global float *x_cords,
+__kernel void build_tree(__global volatile float *x_cords,
                         __global float *y_cords,
                         __global float* z_cords,
                         __global volatile int* child,
@@ -152,12 +162,12 @@ __kernel void build_tree(__global float *x_cords,
   int skip = 1;
   int inc =  get_global_size(0);
   int i = get_global_id(0);
-  int j, x, y, z;
+  float x, y, z;
+  int j;
   float px, py, pz;
   int ch, n, cell, locked, patch;
   int depth;
-
-  if (i < num_bodies) {
+  while (i < num_bodies) {
     if (skip != 0) {
       skip = 0;
       px = x_cords[i];
@@ -184,35 +194,55 @@ __kernel void build_tree(__global float *x_cords,
       if (z_cords[n] < pz) j += 4;
       ch = child[n*8+j];
     }
+
     if (ch != -2 ) {
     locked = n*8+j;
-    int test = child[locked];
+    //int test = child[locked];
     mem_fence(CLK_GLOBAL_MEM_FENCE);
+    /*return;*/
     if (ch == atomic_cmpxchg(&child[locked], ch, -2)) {
       mem_fence(CLK_GLOBAL_MEM_FENCE);
+      printf("idx: %d, j: %d locked: %d, \n", i, j, locked);
+      printf("idx: %d, px: %f, px: %f pz: %f, \n", i, px, py, pz);
+
       if(ch == -1) {
+        printf("added\n");
         child[locked] = i;
-        mem_fence(CLK_GLOBAL_MEM_FENCE);
       } else {
+        /*y_cords[num_nodes] = 101;*/
         patch = -1;
         // create new cell(s) and insert the old and new body
+        int test = 100;
         do {
+          printf("Test: %d idx: %d \n", test, i);
           depth++;
           cell = atomic_dec(bottom) - 1;
+          /*printf("n: %d \n", n);*/
+          /*printf("Cell: %d \n", cell);*/
           if (cell <= num_bodies) {
-            *bottom = 1/0;
+            *bottom = num_nodes;
+             return;
           }
           patch = max(patch, cell);
 
+          /*printf("j: %d \n", j);*/
           x = (j & 1) * r;
           y = ((j >> 1) & 1) * r;
           z = ((j >> 2) & 1) * r;
+          /*printf("idx: %d, x: %.20f \n", i, x);*/
+          /*printf("idx: %d, y: %.20f \n", i, y);*/
+          /*printf("idx: %d, z: %.20f \n", i, z);*/
           r *= 0.5f;
+          /*printf("idx: %d, R: %.20f \n", i, r);*/
+          //printf("idx: %d, j: %i \n", i, j);
 
           mass[cell] = -1.0f;
           start[cell] = -1;
           x = x_cords[cell] = x_cords[n] - r + x;
+          printf("Cell: %d\n", cell);
+          //if (cell != num_bodies) {
           y = y_cords[cell] = y_cords[n] - r + y;
+          //}
           z = z_cords[cell] = z_cords[n] - r + z;
           for (int k = 0; k < 8; k++) child[cell*8+k] = -1;
 
@@ -224,6 +254,10 @@ __kernel void build_tree(__global float *x_cords,
           if (x < x_cords[ch]) j = 1;
           if (y < y_cords[ch]) j += 2;
           if (z < z_cords[ch]) j += 4;
+          /*printf("idx: %d, x: %.20f \n", i, x);*/
+          /*printf("idx: %d, y: %.20f \n", i, y);*/
+          /*printf("idx: %d, z: %.20f \n", i, z);*/
+          /*printf("idx: %d, j: %i \n", i, j);*/
           child[cell*8+j] = ch;
 
           n = cell;
@@ -233,150 +267,25 @@ __kernel void build_tree(__global float *x_cords,
           if (z < pz) j += 4;
 
           ch = child[n*8+j];
-        } while (ch >= 0);
-          child[n*8+j] = i;
-          mem_fence(CLK_GLOBAL_MEM_FENCE);
-          child[locked] = patch;
-          mem_fence(CLK_GLOBAL_MEM_FENCE);
+          test--;
+          //printf("idx: %d, ch: %d\n",i, ch);
+        } while (test > 0 && ch >= 0);
+        //y_cords[num_nodes] = r;
+        child[n*8+j] = i;
+        //strong_global_mem_fence_ptx();
+        mem_fence(CLK_GLOBAL_MEM_FENCE);
+        child[locked] = patch;
        }
        //[>[>localmaxdepth = max(depth, localmaxdepth);<]<]
       i += inc;  // move on to next body
       skip = 1;
+      //x_cords[num_nodes] = 101;
       } else {
-        x_cords[num_nodes] = 100;
+        //x_cords[num_nodes] = 100;
       }
-    }
+      }
+      //barrier(CLK_GLOBAL_MEM_FENCE);
      mem_fence(CLK_GLOBAL_MEM_FENCE);
   }
+  //y_cords[num_nodes] = 10;
 }
-
-    /*/**/
-      /*if(ch == -1) {*/
-        /*child[locked] = i;*/
-       /*} else {*/
-        /*patch = -1;*/
-        /*i += inc;*/
-        /*// create new cell(s) and insert the old and new body*/
-        /*}*/
-        /*do {*/
-          /*j++;*/
-
-          /*depth++;*/
-          /*cell = atomic_dec(bottom) - 1;*/
-          /*if (cell <= num_bodies) {*/
-            /*//depth = 1/0;*/
-            /*bottom = num_nodes;*/
-          /*}*/
-          /*patch = max(patch, cell);*/
-
-          /*x = (j & 1) * r;*/
-          /*y = ((j >> 1) & 1) * r;*/
-          /*z = ((j >> 2) & 1) * r;*/
-          /*r *= 0.5f;*/
-
-
-          /*mass[cell] = -1.0f;*/
-          /*start[cell] = -1;*/
-          /*x = x_cords[cell] = x_cords[n] - r + x;*/
-          /*y = y_cords[cell] = y_cords[n] - r + y;*/
-          /*z = z_cords[cell] = z_cords[n] - r + z;*/
-          /*// TODO move k to top declaration*/
-          /*for (int k = 0; k < 8; k++) child[cell*8+k] = -1;*/
-
-          /*if (patch != cell) {*/
-            /*child[n*8+j] = cell;*/
-          /*}*/
-
-          /*j = 0;*/
-          /*if (x < x_cords[ch]) j = 1;*/
-          /*if (y < y_cords[ch]) j += 2;*/
-          /*if (z < z_cords[ch]) j += 4;*/
-          /*child[cell*8+j] = ch;*/
-
-          /*n = cell;*/
-          /*j = 0;*/
-          /*if (x < px) j = 1;*/
-          /*if (y < py) j += 2;*/
-          /*if (z < pz) j += 4;*/
-
-          /*ch = child[n*8+j];*/
-        /*} while (ch >= 0);*/
-        /*x_cords[n*8+j] = i;*/
-        /*//child[locked] = patch;*/
-      /*}*/
-      /*localmaxdepth = max(depth, localmaxdepth);*/
-      /*i += inc;*/
-      /*skip = 1;*/
-    /*}*/
-  /*}*/
-    /*
-    while (ch >= num_bodies) {
-      n = ch;
-      depth++;
-      r *= 0.5f;
-      j = 0;
-      if (rootx < px) j = 1;
-      if (rooty < py) j += 2;
-      if (rootz < pz) j += 4;
-    }
-    if (ch == -2) return;
-    locked = n*8+j;
-    if (ch == atomic_cmpxchg(&childd[locked], ch, -2)) {
-      if(ch == -1) {
-        // if null, just insert the new body
-        child[locked] = i;
-       } else {
-        patch = -1;
-        // create new cell(s) and insert the old and new body
-        do {
-          depth++;
-          cell = atomic_dec(&bottomd) - 1;
-          if (cell <= num_bodies) {
-            depth = 1/0;
-            bottomd = num_nodes;
-          }
-          patch = max(patch, cell);
-
-          x = (j & 1) * r;
-          y = ((j >> 1) & 1) * r;
-          z = ((j >> 2) & 1) * r;
-          r *= 0.5f;
-
-          massd[cell] = -1.0f;
-          startd[cell] = -1;
-          x = x_cords[cell] = x_cords[n] - r + x;
-          y = y_cords[cell] = y_cords[n] - r + y;
-          z = z_cords[cell] = z_cords[n] - r + z;
-          for (k = 0; k < 8; k++) childd[cell*8+k] = -1;
-
-          if (patch != cell) {
-            childd[n*8+j] = cell;
-          }
-
-          j = 0;
-          if (x < posxd[ch]) j = 1;
-          if (y < posyd[ch]) j += 2;
-          if (z < poszd[ch]) j += 4;
-          childd[cell*8+j] = ch;
-
-          n = cell;
-          j = 0;
-          if (x < px) j = 1;
-          if (y < py) j += 2;
-          if (z < pz) j += 4;
-
-          ch = childd[n*8+j];
-        } while (ch >= 0);
-          childd[n*8+j] = i;
-   //       __threadfence();  // push out subtree
-        childd[locked] = patch;
-      }
-
-      localmaxdepth = max(depth, localmaxdepth);
-      i += inc;  // move on to next body
-      skip = 1;
-      */
-  //  __syncthreads();  // throttle
-  // record maximum tree depth
-  /*atomicMax((int *)&maxdepthd, localmaxdepth);
-  */
