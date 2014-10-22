@@ -48,9 +48,6 @@ __kernel void bound_box(__global float *x_cords,
   minx = maxx = x_cords[0];
   miny = maxy = y_cords[0];
   minz = maxz = z_cords[0];
-  if (idx < num_bodies) {
-    printf("idx: %d, x: %f\n", idx, x_cords[idx]);
-  }
   float val;
   int inc = global_dim_size;
   for (int j = idx; j < num_bodies; j += inc) {
@@ -202,14 +199,11 @@ __kernel void build_tree(__global volatile float *x_cords,
     /*return;*/
     if (ch == atomic_cmpxchg(&child[locked], ch, -2)) {
       mem_fence(CLK_GLOBAL_MEM_FENCE);
-      printf("idx: %d, j: %d locked: %d, \n", i, j, locked);
-      printf("idx: %d, px: %f, px: %f pz: %f, \n", i, px, py, pz);
 
       if(ch == -1) {
         printf("added\n");
         child[locked] = i;
       } else {
-        /*y_cords[num_nodes] = 101;*/
         patch = -1;
         // create new cell(s) and insert the old and new body
         int test = 100;
@@ -217,24 +211,17 @@ __kernel void build_tree(__global volatile float *x_cords,
           printf("Test: %d idx: %d \n", test, i);
           depth++;
           cell = atomic_dec(bottom) - 1;
-          /*printf("n: %d \n", n);*/
-          /*printf("Cell: %d \n", cell);*/
+
           if (cell <= num_bodies) {
             *bottom = num_nodes;
              return;
           }
           patch = max(patch, cell);
 
-          /*printf("j: %d \n", j);*/
           x = (j & 1) * r;
           y = ((j >> 1) & 1) * r;
           z = ((j >> 2) & 1) * r;
-          /*printf("idx: %d, x: %.20f \n", i, x);*/
-          /*printf("idx: %d, y: %.20f \n", i, y);*/
-          /*printf("idx: %d, z: %.20f \n", i, z);*/
           r *= 0.5f;
-          /*printf("idx: %d, R: %.20f \n", i, r);*/
-          //printf("idx: %d, j: %i \n", i, j);
 
           mass[cell] = -1.0f;
           start[cell] = -1;
@@ -254,10 +241,6 @@ __kernel void build_tree(__global volatile float *x_cords,
           if (x < x_cords[ch]) j = 1;
           if (y < y_cords[ch]) j += 2;
           if (z < z_cords[ch]) j += 4;
-          /*printf("idx: %d, x: %.20f \n", i, x);*/
-          /*printf("idx: %d, y: %.20f \n", i, y);*/
-          /*printf("idx: %d, z: %.20f \n", i, z);*/
-          /*printf("idx: %d, j: %i \n", i, j);*/
           child[cell*8+j] = ch;
 
           n = cell;
@@ -268,24 +251,15 @@ __kernel void build_tree(__global volatile float *x_cords,
 
           ch = child[n*8+j];
           test--;
-          //printf("idx: %d, ch: %d\n",i, ch);
         } while (test > 0 && ch >= 0);
-        //y_cords[num_nodes] = r;
         child[n*8+j] = i;
-        //strong_global_mem_fence_ptx();
         mem_fence(CLK_GLOBAL_MEM_FENCE);
         child[locked] = patch;
        }
-       //[>[>localmaxdepth = max(depth, localmaxdepth);<]<]
-      i += inc;  // move on to next body
-      skip = 1;
-      //x_cords[num_nodes] = 101;
-      } else {
-        //x_cords[num_nodes] = 100;
+        i += inc;  // move on to next body
+        skip = 1;
+      } 
       }
-      }
-      //barrier(CLK_GLOBAL_MEM_FENCE);
      mem_fence(CLK_GLOBAL_MEM_FENCE);
   }
-  //y_cords[num_nodes] = 10;
 }

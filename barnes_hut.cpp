@@ -68,8 +68,11 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
       sizeof(float) * 1, NULL, &err);
   // Create Buffers  NOTE* These do need to be (num_nodes + 1)
 
+
   args->posx = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
       sizeof(float) * (num_nodes + 1), host_memory->posx, &err);
+
+
   CHK_ERR(err);
   args->posz = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), host_memory->posz, &err);
@@ -216,9 +219,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     NULL, NULL);
   CHK_ERR(err);
 
-  for (int i= 0; i < num_bodies; i++) {
-  printf("i: %d, x: %f\n", i, host_memory->posx[i]);
-  }
+  printf("x: %f\n",host_memory->posx[num_nodes]);
   printf("y: %f \n", host_memory->posy[num_nodes]);
   printf("z: %f \n", host_memory->posz[num_nodes]);
   printf("mass: %f \n", host_memory->mass[num_nodes]);
@@ -244,7 +245,7 @@ int main (int argc, char *argv[])
 {
   //CL_LOG_ERRORS=stdout;
   //register double rsc, vsc, r, v, x, y, z, sq, scale;
-  int split = 4;
+  int split = 5;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -264,11 +265,12 @@ int main (int argc, char *argv[])
   for (int i = 0; i < split; i++) {
     for (int j = 0; j < split; j++) {
       for (int k = 0; k < split; k++) {
-        host_memory.posx[i*(split*2)+j*(split)+k] = i + 0.01;
-        host_memory.posy[i*(split*2)+j*(split)+k] = j + 0.01;
-        host_memory.posz[i*(split*2)+j*(split)+k] = k + 0.01;
-        std::cout << "(" <<  host_memory.posx[i*(split*2)+j*(split)+k] << ", " 
-          << host_memory.posy[i*(split*2)+j*(split)+k] << ", " << host_memory.posz[i*(split*2)+j*(split)+k] << ")" << std::endl;
+        host_memory.posx[i*(split*split)+j*(split)+k] = i + 0.01;
+        host_memory.posy[i*(split*split)+j*(split)+k] = j + 0.01;
+        host_memory.posz[i*(split*split)+j*(split)+k] = k + 0.01;
+        //std::cout << i*(split*split)+j*(split)+k << std::endl;
+        //std::cout << "(" <<  host_memory.posx[i*(split*split)+j*(split)+k] << ", " 
+          //<< host_memory.posy[i*(split*split)+j*(split)+k] << ", " << host_memory.posz[i*(split*split)+j*(split)+k] << ")" << std::endl;
       }
     }
   }
@@ -304,7 +306,6 @@ int main (int argc, char *argv[])
   cl_int err = CL_SUCCESS;
 
   CreateMemBuffer(&cv, &args, &host_memory);
-  DebuggingPrintValue(&cv, &args, &host_memory);
 
 
   /* Set local work size and global work sizes */
@@ -317,20 +318,20 @@ int main (int argc, char *argv[])
   // Set the Kernel Arguements for bounding box
   SetArgs(&kernel_map[bounding_box_name_str], &args);
 
-  //err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   err = clFinish(cv.commands);
   CHK_ERR(err);
-  //DebuggingPrintValue(&cv, &args, &host_memory);
+  DebuggingPrintValue(&cv, &args, &host_memory);
   SetArgs(&kernel_map[build_tree_name_str], &args);
   CHK_ERR(err);
-  global_work_size[0] = THREADS1;
-  //err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  //global_work_size[0] = THREADS1;
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   err = clFinish(cv.commands);
   CHK_ERR(err);
 
-  //DebuggingPrintValue(&cv, &args, &host_memory);
+  DebuggingPrintValue(&cv, &args, &host_memory);
 
 }
 
