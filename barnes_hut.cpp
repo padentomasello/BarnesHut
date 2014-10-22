@@ -194,13 +194,46 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   if (host->child == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
+void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
+  if (index > num_bodies) return;
+  float parent_x_position = host_memory->posx[index];
+  float parent_y_position = host_memory->posy[index];
+  float parent_z_position = host_memory->posz[index];
+  std::cout << "parent x: " << parent_x_position << std::endl;
+  std::cout << "parent y: " << parent_y_position << std::endl;
+  std::cout << "parent z: " << parent_z_position << std::endl;
+  float child_x_position, child_y_position, child_z_position;
+  int j, child_index;
+  for (int i = 0; i < 8; i++) {
+    child_index = host_memory->child[8*index + i];
+    if (child_index >= 0) {
+    child_x_position = host_memory->posx[child_index];
+    child_y_position = host_memory->posy[child_index];
+    child_z_position = host_memory->posz[child_index];
+    std::cout << "child x: " <<child_x_position << std::endl;
+    std::cout << "child y: " << child_y_position << std::endl;
+    std::cout << "child z: " << child_z_position << std::endl;
+    j = 0;
+    if (child_x_position > parent_x_position) j+=1;
+    if (child_y_position > parent_y_position) j+=2;
+    if (child_z_position > parent_z_position) j+=4;
+    if (j != i) {
+      std::cout << "ERROR" << std::endl;
+    }
+    CheckTree(child_index, host_memory, num_bodies);
+    }
+  }
+}
+
+
+
 void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory){
   cl_int err;
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
   err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posx, 0, NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0, 
+  err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posy, 0, NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
     NULL, NULL);
@@ -219,6 +252,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     NULL, NULL);
   CHK_ERR(err);
 
+  CheckTree(num_nodes, host_memory, num_bodies);
   printf("x: %f\n",host_memory->posx[num_nodes]);
   printf("y: %f \n", host_memory->posy[num_nodes]);
   printf("z: %f \n", host_memory->posz[num_nodes]);
@@ -228,7 +262,6 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
   printf("bottom_num: %d \n", host_memory->bottom);
   printf("radius: %f \n", radius);
   int k = args->num_nodes * 8;
-  printf("child num: %d \n", host_memory->child[32767]);
   for(int i = 0; i < 8; i++) {
     int index = host_memory->child[k + i];
     printf("child: %d \n", index);
@@ -245,15 +278,15 @@ int main (int argc, char *argv[])
 {
   //CL_LOG_ERRORS=stdout;
   //register double rsc, vsc, r, v, x, y, z, sq, scale;
-  int split = 5;
+  int split = 20;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
-  if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
-  while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
-  num_nodes--;
+  //if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
+  //while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
+  //num_nodes--;
 
   KernelArgs args;
   args.num_nodes = num_nodes;
@@ -269,7 +302,7 @@ int main (int argc, char *argv[])
         host_memory.posy[i*(split*split)+j*(split)+k] = j + 0.01;
         host_memory.posz[i*(split*split)+j*(split)+k] = k + 0.01;
         //std::cout << i*(split*split)+j*(split)+k << std::endl;
-        //std::cout << "(" <<  host_memory.posx[i*(split*split)+j*(split)+k] << ", " 
+        //std::cout << "(" <<  host_memory.posx[i*(split*split)+j*(split)+k] << ", "
           //<< host_memory.posy[i*(split*split)+j*(split)+k] << ", " << host_memory.posz[i*(split*split)+j*(split)+k] << ")" << std::endl;
       }
     }
