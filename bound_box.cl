@@ -201,14 +201,12 @@ __kernel void build_tree(__global volatile float *x_cords,
       mem_fence(CLK_GLOBAL_MEM_FENCE);
 
       if(ch == -1) {
-        printf("added\n");
         child[locked] = i;
       } else {
         patch = -1;
         // create new cell(s) and insert the old and new body
         int test = 100;
         do {
-          printf("Test: %d idx: %d \n", test, i);
           depth++;
           cell = atomic_dec(bottom) - 1;
 
@@ -226,10 +224,7 @@ __kernel void build_tree(__global volatile float *x_cords,
           mass[cell] = -1.0f;
           start[cell] = -1;
           x = x_cords[cell] = x_cords[n] - r + x;
-          printf("Cell: %d\n", cell);
-          //if (cell != num_bodies) {
           y = y_cords[cell] = y_cords[n] - r + y;
-          //}
           z = z_cords[cell] = z_cords[n] - r + z;
           for (int k = 0; k < 8; k++) child[cell*8+k] = -1;
 
@@ -258,7 +253,7 @@ __kernel void build_tree(__global volatile float *x_cords,
        }
         i += inc;  // move on to next body
         skip = 1;
-      } 
+      }
       }
      mem_fence(CLK_GLOBAL_MEM_FENCE);
   }

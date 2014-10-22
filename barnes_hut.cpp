@@ -66,12 +66,10 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
       sizeof(int) * 1, NULL, &err);
   args->radius = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(float) * 1, NULL, &err);
+
   // Create Buffers  NOTE* These do need to be (num_nodes + 1)
-
-
   args->posx = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
       sizeof(float) * (num_nodes + 1), host_memory->posx, &err);
-
 
   CHK_ERR(err);
   args->posz = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
@@ -194,14 +192,12 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   if (host->child == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
+// TODO maybe count the nodes in order to make sure this reaches all of the.
 void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
-  if (index > num_bodies) return;
+  if (index < num_bodies) return;
   float parent_x_position = host_memory->posx[index];
   float parent_y_position = host_memory->posy[index];
   float parent_z_position = host_memory->posz[index];
-  std::cout << "parent x: " << parent_x_position << std::endl;
-  std::cout << "parent y: " << parent_y_position << std::endl;
-  std::cout << "parent z: " << parent_z_position << std::endl;
   float child_x_position, child_y_position, child_z_position;
   int j, child_index;
   for (int i = 0; i < 8; i++) {
@@ -210,9 +206,6 @@ void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
     child_x_position = host_memory->posx[child_index];
     child_y_position = host_memory->posy[child_index];
     child_z_position = host_memory->posz[child_index];
-    std::cout << "child x: " <<child_x_position << std::endl;
-    std::cout << "child y: " << child_y_position << std::endl;
-    std::cout << "child z: " << child_z_position << std::endl;
     j = 0;
     if (child_x_position > parent_x_position) j+=1;
     if (child_y_position > parent_y_position) j+=2;
@@ -276,17 +269,15 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  //CL_LOG_ERRORS=stdout;
-  //register double rsc, vsc, r, v, x, y, z, sq, scale;
-  int split = 20;
+  int split = 100;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
-  //if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
-  //while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
-  //num_nodes--;
+  if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
+  while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
+  num_nodes--;
 
   KernelArgs args;
   args.num_nodes = num_nodes;
@@ -295,25 +286,16 @@ int main (int argc, char *argv[])
   HostMemory host_memory;
   AllocateHostMemory(&host_memory, num_nodes, num_bodies);
 
+  // Sample Values
   for (int i = 0; i < split; i++) {
     for (int j = 0; j < split; j++) {
       for (int k = 0; k < split; k++) {
-        host_memory.posx[i*(split*split)+j*(split)+k] = i + 0.01;
-        host_memory.posy[i*(split*split)+j*(split)+k] = j + 0.01;
-        host_memory.posz[i*(split*split)+j*(split)+k] = k + 0.01;
-        //std::cout << i*(split*split)+j*(split)+k << std::endl;
-        //std::cout << "(" <<  host_memory.posx[i*(split*split)+j*(split)+k] << ", "
-          //<< host_memory.posy[i*(split*split)+j*(split)+k] << ", " << host_memory.posz[i*(split*split)+j*(split)+k] << ")" << std::endl;
+        host_memory.posx[i*(split*split)+j*(split)+k] = i;
+        host_memory.posy[i*(split*split)+j*(split)+k] = j;
+        host_memory.posz[i*(split*split)+j*(split)+k] = k;
       }
     }
   }
-  //for (int i = 0; i < num_bodies; i++) {
-    ////std::cout << i << std::endl;
-    //host_memory.posx[i] = i;
-    //host_memory.posy[i] = i;
-    //host_memory.posz[i] = i;
-  //}
-
 
   std::string kernel_source_str;
 
@@ -344,7 +326,7 @@ int main (int argc, char *argv[])
   /* Set local work size and global work sizes */
   // TODO CAN BE optimized.
   size_t local_work_size[1] = {THREADS1};
-  size_t global_work_size[1] = {32*THREADS1};
+  size_t global_work_size[1] = {64*THREADS1};
   size_t num_work_groups = 2;
 
 
@@ -358,7 +340,6 @@ int main (int argc, char *argv[])
   DebuggingPrintValue(&cv, &args, &host_memory);
   SetArgs(&kernel_map[build_tree_name_str], &args);
   CHK_ERR(err);
-  //global_work_size[0] = THREADS1;
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   err = clFinish(cv.commands);
