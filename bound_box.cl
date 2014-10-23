@@ -29,6 +29,7 @@ __kernel void bound_box(__global float *x_cords,
                         __global float* global_y_maxs,
                         __global float* global_z_mins,
                         __global float* global_z_maxs,
+                        __global float* count,
                         __global volatile int* blocked,
                         __global volatile int* stepd,
                         __global volatile int* bottomd,
@@ -136,6 +137,7 @@ __kernel void build_tree(__global volatile float *x_cords,
                         __global float* global_y_maxs,
                         __global float* global_z_mins,
                         __global float* global_z_maxs,
+                        __global float* count,
                         __global volatile int* blocked,
                         __global volatile int* step,
                         __global volatile int* bottom,
@@ -249,5 +251,120 @@ __kernel void build_tree(__global volatile float *x_cords,
       }
       }
      mem_fence(CLK_GLOBAL_MEM_FENCE);
+  }
+}
+
+__kernel void compute_sums(__global volatile float *x_cords,
+                        __global float *y_cords,
+                        __global float* z_cords,
+                        __global volatile int* children,
+                        __global float* mass,
+                        __global float* start,
+                        __global float* global_x_mins,
+                        __global float* global_x_maxs,
+                        __global float* global_y_mins,
+                        __global float* global_y_maxs,
+                        __global float* global_z_mins,
+                        __global float* global_z_maxs,
+                        __global float* count,
+                        __global volatile int* blocked,
+                        __global volatile int* step,
+                        __global volatile int* bottom,
+                        __global volatile int* maxdepth,
+                        __global volatile float* radiusd,
+                        const int num_bodies,
+                        const int num_nodes) {
+  int i, j, k, inc, num_children_missing, cnt, bottom_value, child;
+  float m, cm, px, py, pz;
+  // TODO change this to THREAD3 Why?
+  volatile int missing_children[THREADS1 * 8];
+  // TODO chache kernel information
+
+  bottom_value = *bottom;
+  inc = get_global_size(0);
+  // Align work to WARP SIZE
+  k = (bottom_value & (-WARPSIZE)) + get_global_id(0);
+  if (k < bottom_value) k += inc;
+
+  num_children_missing = 0;
+
+  while (k <= num_nodes) {
+    if (num_children_missing == 0) { // Must be new cell
+      cm = 0.0f;
+      px = 0.0f;
+      py = 0.0f;
+      pz = 0.0f;
+      cnt = 0;
+      j = 0;
+      for (i = 0; i < 8; i++) {
+        child = children[k*8+i];
+        if (k == num_nodes) {
+           printf("Rear Child: %d \n", child);
+        }
+        if (child >= 0) {
+          if (i != j) {
+            // Moving children to front. Apparently needed later
+            // TODO figure out why this is
+            children[k*8+i] = -1;
+            children[k*8+j] = child;
+          }
+          missing_children[num_children_missing*THREADS1+get_local_id(0)] = child;
+          m = mass[child];
+          num_children_missing++;
+          if (m >= 0.0f) {
+            // Child has already been touched
+            num_children_missing--;
+            if (child >= num_bodies) { // Count the bodies. TODO Why?
+              cnt += count[child] - 1;
+            }
+            // Sum mass and positions
+            cm += m;
+            px += x_cords[child] * m;
+            py += y_cords[child] * m;
+            pz += z_cords[child] * m;
+          }
+          j++;
+        }
+      }
+      cnt += j;
+    }
+
+    if (num_children_missing != 0) {
+      do {
+        child = missing_children[(num_children_missing - 1)*THREADS1+get_local_id(0)];
+        m = mass[child];
+        if (m >= 0.0f) {
+          // Child has been touched
+          num_children_missing--;
+          if (child >= num_bodies) { // Count the bodies. TODO Why?
+            cnt += count[child] - 1;
+          }
+          // Sum mass and positions
+          cm += m;
+          px += x_cords[child] * m;
+          py += y_cords[child] * m;
+          pz += z_cords[child] * m;
+        }
+      } while ((m >= 0.0f) && (num_children_missing != 0));
+        // Repeat until we are done or child is not ready TODO question: is this for thread divergence?
+    }
+
+    if (num_children_missing == 0) {
+      //We're done! finish the sum
+      count[k] = cnt;
+      m = 1.0f / cm;
+      /*if (k == num_nodes) {*/
+      /*printf("X cords: %f \n", x_cords[k]);*/
+      /*printf("m cords: %f \n", m);*/
+      /*printf("px cords: %f \n", px);*/
+      /*}*/
+      x_cords[k] = px * m;
+      mem_fence(CLK_GLOBAL_MEM_FENCE);
+      y_cords[k] = py * m;
+      z_cords[k] = pz * m;
+      mem_fence(CLK_GLOBAL_MEM_FENCE);
+      mass[k] = cm;
+      k += inc;
+    }
   }
 }

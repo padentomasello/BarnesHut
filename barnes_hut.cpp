@@ -8,6 +8,8 @@
 
 #include "clhelp.h"
 
+using namespace std;
+
 // TODO this used to be 512.
 #define THREADS1 256  /* must be a power of 2 */
 #define THREADS2 1024
@@ -36,7 +38,7 @@ struct KernelArgs{
 
 struct HostMemory {
   float *mass, *posx, *posy, *posz, *velx, *vely, *velz;
-  int* start, *child;
+  int* start, *child, *count;
   int step, max_depth, bottom, blocked;
 };
 
@@ -77,8 +79,8 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
   args->posy = clCreateBuffer(cv->context, CL_MEM_COPY_HOST_PTR | CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), host_memory->posy, &err);
   CHK_ERR(err);
-  args->mass = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), NULL, &err);
+  args->mass = clCreateBuffer(cv->context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+      sizeof(float)*(num_nodes + 1), host_memory->mass, &err);
   CHK_ERR(err);
   args->count = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(float)*(num_nodes + 1), NULL, &err);
@@ -88,6 +90,7 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
   CHK_ERR(err);
   args->child = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(int)*8*(num_nodes + 1), NULL, &err);
+
   //Set the following alligned on WARP boundaries
   int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
     cl_buffer_region velxl_region = {0, 1*inc};
@@ -151,19 +154,21 @@ void SetArgs(cl_kernel *kernel, KernelArgs* args){
   CHK_ERR(err);
   err = clSetKernelArg(*kernel, 11, sizeof(cl_mem), &args->maxz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 12, sizeof(cl_mem), &args->blocked);
+  err = clSetKernelArg(*kernel, 12, sizeof(cl_mem), &args->count);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 13, sizeof(cl_mem), &args->step);
+  err = clSetKernelArg(*kernel, 13, sizeof(cl_mem), &args->blocked);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 14, sizeof(cl_mem), &args->bottom);
+  err = clSetKernelArg(*kernel, 14, sizeof(cl_mem), &args->step);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 15, sizeof(cl_mem), &args->max_depth);
+  err = clSetKernelArg(*kernel, 15, sizeof(cl_mem), &args->bottom);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 16, sizeof(cl_mem), &args->radius);
+  err = clSetKernelArg(*kernel, 16, sizeof(cl_mem), &args->max_depth);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 17, sizeof(int), &args->num_bodies);
+  err = clSetKernelArg(*kernel, 17, sizeof(cl_mem), &args->radius);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 18, sizeof(int), &args->num_nodes);
+  err = clSetKernelArg(*kernel, 18, sizeof(int), &args->num_bodies);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 19, sizeof(int), &args->num_nodes);
   CHK_ERR(err);
 
 }
@@ -220,7 +225,7 @@ void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
 
 
 
-void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory){
+void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory, bool check_tree_position){
   cl_int err;
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
@@ -245,9 +250,9 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     NULL, NULL);
   CHK_ERR(err);
 
-  printf("x: %f\n",host_memory->posx[num_nodes]);
-  printf("y: %f \n", host_memory->posy[num_nodes]);
-  printf("z: %f \n", host_memory->posz[num_nodes]);
+  printf("x: %.20f\n",host_memory->posx[num_nodes]);
+  printf("y: %.20f \n", host_memory->posy[num_nodes]);
+  printf("z: %.20f \n", host_memory->posz[num_nodes]);
   printf("mass: %f \n", host_memory->mass[num_nodes]);
   printf("startd: %d \n", host_memory->start[num_nodes]);
   printf("stepd_num: %d \n", host_memory->step);
@@ -258,26 +263,28 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
     int index = host_memory->child[k + i];
     printf("child: %d \n", index);
     if (index != -1) {
-    printf("child x: %f \n", host_memory->posx[index]);
-    printf("child y: %f \n", host_memory->posy[index]);
-    printf("child z: %f \n", host_memory->posz[index]);
+    printf("child x: %.12f \n", host_memory->posx[index]);
+    printf("child y: %.12f \n", host_memory->posy[index]);
+    printf("child z: %.12f \n", host_memory->posz[index]);
     }
   }
-  CheckTree(num_nodes, host_memory, num_bodies);
+  if (check_tree_position) {
+    CheckTree(num_nodes, host_memory, num_bodies);
+  }
 }
 
 
 int main (int argc, char *argv[])
 {
-  int split = 150;
+  int split = 4;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
-  if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
-  while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
-  num_nodes--;
+  //if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
+  //while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
+  //num_nodes--;
 
   KernelArgs args;
   args.num_nodes = num_nodes;
@@ -293,6 +300,7 @@ int main (int argc, char *argv[])
         host_memory.posx[i*(split*split)+j*(split)+k] = i;
         host_memory.posy[i*(split*split)+j*(split)+k] = j;
         host_memory.posz[i*(split*split)+j*(split)+k] = k;
+        host_memory.mass[i*(split*split)+j*(split)+k] = 1.0;
       }
     }
   }
@@ -301,11 +309,13 @@ int main (int argc, char *argv[])
 
   std::list<std::string> kernel_names;
 
-  std::string bounding_box_name_str = std::string("bound_box");
-  std::string build_tree_name_str = std::string("build_tree");
+  string bounding_box_name_str = std::string("bound_box");
+  string build_tree_name_str = std::string("build_tree");
+  string compute_sums_name_str = string("compute_sums");
 
   kernel_names.push_back(bounding_box_name_str);
   kernel_names.push_back(build_tree_name_str);
+  kernel_names.push_back(compute_sums_name_str);
 
   std::string kernel_file = std::string("bound_box.cl");
 
@@ -329,23 +339,24 @@ int main (int argc, char *argv[])
   size_t global_work_size[1] = {THREADS1};
   size_t num_work_groups = 2;
 
-
   // Set the Kernel Arguements for bounding box
   SetArgs(&kernel_map[bounding_box_name_str], &args);
   SetArgs(&kernel_map[build_tree_name_str], &args);
+  SetArgs(&kernel_map[compute_sums_name_str], &args);
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  DebuggingPrintValue(&cv, &args, &host_memory, true);
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   //err = clFinish(cv.commands);
   CHK_ERR(err);
-  //DebuggingPrintValue(&cv, &args, &host_memory);
   CHK_ERR(err);
   CHK_ERR(err);
   //err = clFinish(cv.commands);
   CHK_ERR(err);
 
-  DebuggingPrintValue(&cv, &args, &host_memory);
+  DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }
 
