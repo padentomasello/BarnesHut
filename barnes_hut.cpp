@@ -197,6 +197,42 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   if (host->child == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
+void CalculateSummation(cl_vars_t cv, KernelArgs* args, HostMemory* host_memory) {
+  bottom = host_memory->bottom;
+  for (int parent = bottom; i <= num_nodes; i++) {
+    for (int k = 0; k < 8; k++) {
+      child = host_memory->child[n*parent+k];
+      if (child >= 0) {
+        if (i != j) {
+          // Moving children to front. Apparently needed later
+          // TODO figure out why this is
+          host_memory->child[k*8+i] = -1;
+          host_memory->child[k*8+j] = child;
+        }
+        m = host_memory->mass[child];
+        // Child has already been touched
+        num_children_missing--;
+        if (child >= num_bodies) { // Count the bodies. TODO Why?
+          cnt += count[child] - 1;
+        }
+        // Sum mass and positions
+        cm += m;
+        px += x_cords[child] * m;
+        py += y_cords[child] * m;
+        pz += z_cords[child] * m;
+        j++;
+      }
+    }
+    cnt += j;
+    host_memory->count[parent] = cnt;
+    m = 1.0f / cm;
+    host_memory->posx[parent] = px * m;
+    host_memory->posy[parent] = py * m;
+    host_memory->posz[parent] = pz * m;
+    host_memory->mass[parent] = cm;
+  }
+}
+
 // TODO maybe count the nodes in order to make sure this reaches all of the.
 void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
   if (index < num_bodies) return;
@@ -223,12 +259,10 @@ void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
   }
 }
 
-
-
-void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory, bool check_tree_position){
-  cl_int err;
+void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
+  cl_int err;
   err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posx, 0, NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0,
@@ -249,6 +283,14 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
   err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &radius, 0,
     NULL, NULL);
   CHK_ERR(err);
+}
+
+
+
+void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memory, bool check_tree_position){
+  cl_int err;
+  int num_nodes = args->num_nodes;
+  int num_bodies = args->num_bodies;
 
   printf("x: %.20f\n",host_memory->posx[num_nodes]);
   printf("y: %.20f \n", host_memory->posy[num_nodes]);
@@ -257,6 +299,8 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
   printf("startd: %d \n", host_memory->start[num_nodes]);
   printf("stepd_num: %d \n", host_memory->step);
   printf("bottom_num: %d \n", host_memory->bottom);
+  float radius;
+  err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &radius, 0, NULL, NULL);
   printf("radius: %f \n", radius);
   int k = args->num_nodes * 8;
   for(int i = 0; i < 8; i++) {
@@ -346,6 +390,7 @@ int main (int argc, char *argv[])
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  ReadFromGpu(&cv, &args, &host_memory);
   DebuggingPrintValue(&cv, &args, &host_memory, true);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
@@ -356,6 +401,7 @@ int main (int argc, char *argv[])
   //err = clFinish(cv.commands);
   CHK_ERR(err);
 
+  ReadFromGpu(&cv, &args, &host_memory);
   DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }
