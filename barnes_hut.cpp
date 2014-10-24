@@ -200,6 +200,8 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   // TODO This can be removed after debugging. Count is only used on GPU
   host->count = (int *)malloc(sizeof(int) *(num_nodes + 1));
   if (host->count == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
+  host->sort = (int *)malloc(sizeof(int) *(num_nodes + 1));
+  if (host->count == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
 void CalculateSummation(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
@@ -207,7 +209,7 @@ void CalculateSummation(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
   int child, cnt, j;
-  
+
   for (int parent = bottom; parent <= num_nodes; parent++) {
     float px = 0.0f;
     float py = 0.0f;
@@ -295,6 +297,33 @@ void CheckSummation(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes) {
   }
 }
 
+void CalculateSorted(int index, HostMemory* host_memory, int start, int num_nodes) {
+  int bottom_node = host_memory->bottom;
+  for (int i = 0; i < 8; i++) {
+    int child_index = host_memory->child[index*8+i];
+    if (child_index >= num_nodes) {
+      host_memory->start[child_index] = start;
+      start += host_memory->count[child_index];
+      CalculateSorted(child_index, host_memory, start, num_nodes);
+    } else if (child_index >= 0) {
+      host_memory->sort[index] = child_index;
+      start++;
+    }
+  }
+}
+
+void CheckSorted(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes, int num_bodies) {
+  for (int i = 0; i < num_bodies; i++) {
+    if (gpu_host->sort[i] != cpu_host->sort[i]) {
+      cout << "Error for sorting at index: " << i << "sorted gpu : " << gpu_host->sort[i] << "sorted cpu: " << cpu_host->sort[i];
+    }
+    if (gpu_host->start[i] != cpu_host->start[i]) {
+      cout << "Error for start at index: " << i << "sorted gpu : " << gpu_host->start[i] << "sorted cpu: " << cpu_host->start[i];
+    }
+  }
+}
+
+
 void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
@@ -358,7 +387,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 10;
+  int split = 100;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -446,7 +475,20 @@ int main (int argc, char *argv[])
   ReadFromGpu(&cv, &args, &host_memory);
   CheckSummation(&host_memory, &host_memory_test, num_nodes);
   err = clFinish(cv.commands);
+
+  // TODO These tests can be condenses
+  HostMemory host_memory_before_sorted;
+  AllocateHostMemory(&host_memory_before_sorted, num_nodes, num_bodies);
+  ReadFromGpu(&cv, &args, &host_memory_before_sorted);
+  CalculateSorted(num_nodes, &host_memory_before_sorted, 0, num_nodes);
+
+
+
+  //// Run Sorted Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[sort_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  ReadFromGpu(&cv, &args, &host_memory);
+  CheckSorted(&host_memory_before_sorted, &host_memory, num_nodes, num_bodies);
+
   //DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }
