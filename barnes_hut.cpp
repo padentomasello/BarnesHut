@@ -83,7 +83,7 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
       sizeof(float)*(num_nodes + 1), host_memory->mass, &err);
   CHK_ERR(err);
   args->count = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
-      sizeof(float)*(num_nodes + 1), NULL, &err);
+      sizeof(int)*(num_nodes + 1), NULL, &err);
   CHK_ERR(err);
   args->start = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(int)*(num_nodes + 1), NULL, &err);
@@ -195,31 +195,44 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   if (host->velz == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
   host->child = (int *)malloc(sizeof(int) * 8*(num_nodes + 1));
   if (host->child == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
+  // TODO This can be removed after debugging. Count is only used on GPU
+  host->count = (int *)malloc(sizeof(int) *(num_nodes + 1));
+  if (host->count == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
-void CalculateSummation(cl_vars_t cv, KernelArgs* args, HostMemory* host_memory) {
-  bottom = host_memory->bottom;
-  for (int parent = bottom; i <= num_nodes; i++) {
-    for (int k = 0; k < 8; k++) {
-      child = host_memory->child[n*parent+k];
+void CalculateSummation(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
+  int bottom = host_memory->bottom;
+  int num_nodes = args->num_nodes;
+  int num_bodies = args->num_bodies;
+  cout << bottom << endl;
+  cout << num_nodes << endl;
+  int child, cnt;
+  float px, py, pz, cm, m;
+  for (int parent = bottom; parent <= num_nodes; parent++) {
+    int j = 0;
+    px = 0.0f;
+    py = 0.0f;
+    pz = 0.0f;
+    cnt = 0;
+    j = 0;
+    for (int i = 0; i < 8; i++) {
+      child = host_memory->child[8*parent+i];
       if (child >= 0) {
         if (i != j) {
           // Moving children to front. Apparently needed later
           // TODO figure out why this is
-          host_memory->child[k*8+i] = -1;
-          host_memory->child[k*8+j] = child;
+          host_memory->child[parent*8+i] = -1;
+          host_memory->child[parent*8+j] = child;
         }
         m = host_memory->mass[child];
-        // Child has already been touched
-        num_children_missing--;
         if (child >= num_bodies) { // Count the bodies. TODO Why?
-          cnt += count[child] - 1;
+          cnt += host_memory->count[child] - 1;
         }
         // Sum mass and positions
         cm += m;
-        px += x_cords[child] * m;
-        py += y_cords[child] * m;
-        pz += z_cords[child] * m;
+        px += host_memory->posx[child] * m;
+        py += host_memory->posy[child] * m;
+        pz += host_memory->posz[child] * m;
         j++;
       }
     }
@@ -230,6 +243,26 @@ void CalculateSummation(cl_vars_t cv, KernelArgs* args, HostMemory* host_memory)
     host_memory->posy[parent] = py * m;
     host_memory->posz[parent] = pz * m;
     host_memory->mass[parent] = cm;
+  }
+}
+
+void CheckSummation(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes) {
+  for(int i = 0; i <= num_nodes; i++) {
+    if (gpu_host->posx[i] != cpu_host->posx[i]) {
+      cout << "Summation ERROR!" << endl;
+    }
+    if (gpu_host->posy[i] != cpu_host->posy[i]) {
+      cout << "Summation ERROR!" << endl;
+    }
+    if (gpu_host->posz[i] != cpu_host->posz[i]) {
+      cout << "Summation ERROR!" << endl;
+    }
+    if (gpu_host->mass[i] != cpu_host->mass[i]) {
+      cout << "Summation ERROR!" << endl;
+    }
+    if (gpu_host->count[i] != cpu_host->count[i]) {
+      cout << "Summation count ERROR at point:" << i << endl;
+    }
   }
 }
 
@@ -267,6 +300,8 @@ void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
       sizeof(float)*(num_nodes + 1), host_memory->posx, 0, NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posy, 0, NULL, NULL);
+  err = clEnqueueReadBuffer(cv->commands, args->count, true, 0, sizeof(int)*(num_nodes+1), host_memory->count, 0,
+    NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
     NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(int)*8*(num_nodes + 1), host_memory->child, 0,
@@ -320,7 +355,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 4;
+  int split = 2;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -388,20 +423,22 @@ int main (int argc, char *argv[])
   SetArgs(&kernel_map[build_tree_name_str], &args);
   SetArgs(&kernel_map[compute_sums_name_str], &args);
 
+  ReadFromGpu(&cv, &args, &host_memory);
+  DebuggingPrintValue(&cv, &args, &host_memory, false);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  ReadFromGpu(&cv, &args, &host_memory);
-  DebuggingPrintValue(&cv, &args, &host_memory, true);
+ //Read memory and calculate summation tree on CPU
+  HostMemory host_memory_test;
+  AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
+  ReadFromGpu(&cv, &args, &host_memory_test);
+  CalculateSummation(&cv, &args, &host_memory_test);
+  // Run summation Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   //err = clFinish(cv.commands);
-  CHK_ERR(err);
-  CHK_ERR(err);
-  CHK_ERR(err);
-  //err = clFinish(cv.commands);
-  CHK_ERR(err);
-
   ReadFromGpu(&cv, &args, &host_memory);
+  CheckSummation(&host_memory, &host_memory_test, num_nodes);
+  //err = clFinish(cv.commands);
   DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }

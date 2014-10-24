@@ -281,6 +281,9 @@ __kernel void compute_sums(__global volatile float *x_cords,
   // TODO chache kernel information
 
   bottom_value = *bottom;
+  if (get_global_id(0) == 0) {
+  printf("bottom value: %d \n", bottom_value);
+  }
   inc = get_global_size(0);
   // Align work to WARP SIZE
   k = (bottom_value & (-WARPSIZE)) + get_global_id(0);
@@ -353,11 +356,6 @@ __kernel void compute_sums(__global volatile float *x_cords,
       //We're done! finish the sum
       count[k] = cnt;
       m = 1.0f / cm;
-      /*if (k == num_nodes) {*/
-      /*printf("X cords: %f \n", x_cords[k]);*/
-      /*printf("m cords: %f \n", m);*/
-      /*printf("px cords: %f \n", px);*/
-      /*}*/
       x_cords[k] = px * m;
       mem_fence(CLK_GLOBAL_MEM_FENCE);
       y_cords[k] = py * m;
