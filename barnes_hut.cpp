@@ -38,7 +38,7 @@ struct KernelArgs{
 
 struct HostMemory {
   float *mass, *posx, *posy, *posz, *velx, *vely, *velz;
-  int* start, *child, *count;
+  int* start, *child, *count, *sort;
   int step, max_depth, bottom, blocked;
 };
 
@@ -142,33 +142,35 @@ void SetArgs(cl_kernel *kernel, KernelArgs* args){
   CHK_ERR(err);
   err = clSetKernelArg(*kernel, 5, sizeof(cl_mem), &args->start);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 6, sizeof(cl_mem), &args->minx);
+  err = clSetKernelArg(*kernel, 6, sizeof(cl_mem), &args->count);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 7, sizeof(cl_mem), &args->maxx);
+  err = clSetKernelArg(*kernel, 7, sizeof(cl_mem), &args->minx);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 8, sizeof(cl_mem), &args->miny);
+  err = clSetKernelArg(*kernel, 8, sizeof(cl_mem), &args->maxx);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 9, sizeof(cl_mem), &args->maxy);
+  err = clSetKernelArg(*kernel, 9, sizeof(cl_mem), &args->miny);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 10, sizeof(cl_mem), &args->minz);
+  err = clSetKernelArg(*kernel, 10, sizeof(cl_mem), &args->maxy);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 11, sizeof(cl_mem), &args->maxz);
+  err = clSetKernelArg(*kernel, 11, sizeof(cl_mem), &args->minz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 12, sizeof(cl_mem), &args->count);
+  err = clSetKernelArg(*kernel, 12, sizeof(cl_mem), &args->maxz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 13, sizeof(cl_mem), &args->blocked);
+  err = clSetKernelArg(*kernel, 13, sizeof(cl_mem), &args->count);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 14, sizeof(cl_mem), &args->step);
+  err = clSetKernelArg(*kernel, 14, sizeof(cl_mem), &args->blocked);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 15, sizeof(cl_mem), &args->bottom);
+  err = clSetKernelArg(*kernel, 15, sizeof(cl_mem), &args->step);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 16, sizeof(cl_mem), &args->max_depth);
+  err = clSetKernelArg(*kernel, 16, sizeof(cl_mem), &args->bottom);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 17, sizeof(cl_mem), &args->radius);
+  err = clSetKernelArg(*kernel, 17, sizeof(cl_mem), &args->max_depth);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 18, sizeof(int), &args->num_bodies);
+  err = clSetKernelArg(*kernel, 18, sizeof(cl_mem), &args->radius);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 19, sizeof(int), &args->num_nodes);
+  err = clSetKernelArg(*kernel, 19, sizeof(int), &args->num_bodies);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 20, sizeof(int), &args->num_nodes);
   CHK_ERR(err);
 
 }
@@ -204,17 +206,16 @@ void CalculateSummation(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory
   int bottom = host_memory->bottom;
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
-  cout << bottom << endl;
-  cout << num_nodes << endl;
-  int child, cnt;
-  float px, py, pz, cm, m;
+  int child, cnt, j;
+  
   for (int parent = bottom; parent <= num_nodes; parent++) {
+    float px = 0.0f;
+    float py = 0.0f;
+    float pz = 0.0f;
+    int cnt = 0;
+    float m = 0.0;
     int j = 0;
-    px = 0.0f;
-    py = 0.0f;
-    pz = 0.0f;
-    cnt = 0;
-    j = 0;
+    float cm = 0.0;
     for (int i = 0; i < 8; i++) {
       child = host_memory->child[8*parent+i];
       if (child >= 0) {
@@ -246,25 +247,6 @@ void CalculateSummation(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory
   }
 }
 
-void CheckSummation(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes) {
-  for(int i = 0; i <= num_nodes; i++) {
-    if (gpu_host->posx[i] != cpu_host->posx[i]) {
-      cout << "Summation ERROR!" << endl;
-    }
-    if (gpu_host->posy[i] != cpu_host->posy[i]) {
-      cout << "Summation ERROR!" << endl;
-    }
-    if (gpu_host->posz[i] != cpu_host->posz[i]) {
-      cout << "Summation ERROR!" << endl;
-    }
-    if (gpu_host->mass[i] != cpu_host->mass[i]) {
-      cout << "Summation ERROR!" << endl;
-    }
-    if (gpu_host->count[i] != cpu_host->count[i]) {
-      cout << "Summation count ERROR at point:" << i << endl;
-    }
-  }
-}
 
 // TODO maybe count the nodes in order to make sure this reaches all of the.
 void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
@@ -288,6 +270,27 @@ void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
       std::cout << "ERROR" << std::endl;
     }
     CheckTree(child_index, host_memory, num_bodies);
+    }
+  }
+}
+
+void CheckSummation(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes) {
+  const float epsilon = 0.000001;
+  for(int i = cpu_host->bottom; i <= num_nodes; i++) {
+    if (gpu_host->posx[i] - cpu_host->posx[i] > (epsilon*cpu_host->posx[i])) {
+      cout << "Summation x ERROR at i: " << i << " cout gpu: " << gpu_host->posx[i] << " cout cpu: " << cpu_host->posx[i] << endl;
+    }
+    if (gpu_host->posy[i] - cpu_host->posy[i] > (epsilon*cpu_host->posy[i])) {
+      cout << "Summation y ERROR at i: " << i << " cout gpu: " << gpu_host->posy[i] << " cout cpu: " << cpu_host->posy[i] << endl;
+    }
+    if (gpu_host->posz[i] - cpu_host->posz[i] > (epsilon*cpu_host->posz[i])) {
+      cout << "Summation z ERROR at i: " << i << " cout gpu: " << gpu_host->posz[i] << " cout cpu: " << cpu_host->posz[i] << endl;
+    }
+    if (abs(gpu_host->mass[i] - cpu_host->mass[i]) > (epsilon*cpu_host->mass[i])) {
+      cout << "Summation mass ERROR at i: " << i << " cout gpu: " << gpu_host->mass[i] << " cout cpu: " << cpu_host->mass[i] << endl;
+    }
+    if (gpu_host->count[i] - cpu_host->count[i] > 0) {
+      cout << "Summation count ERROR at point: " << i << " cout gpu: " << gpu_host->count[i] << " cout cpu: " << cpu_host->count[i] << endl;
     }
   }
 }
@@ -355,7 +358,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 2;
+  int split = 10;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -379,7 +382,7 @@ int main (int argc, char *argv[])
         host_memory.posx[i*(split*split)+j*(split)+k] = i;
         host_memory.posy[i*(split*split)+j*(split)+k] = j;
         host_memory.posz[i*(split*split)+j*(split)+k] = k;
-        host_memory.mass[i*(split*split)+j*(split)+k] = 1.0;
+        host_memory.mass[i*(split*split)+j*(split)+k] = i+j+k;
       }
     }
   }
@@ -391,10 +394,12 @@ int main (int argc, char *argv[])
   string bounding_box_name_str = std::string("bound_box");
   string build_tree_name_str = std::string("build_tree");
   string compute_sums_name_str = string("compute_sums");
+  string sort_name_str = string("sort");
 
   kernel_names.push_back(bounding_box_name_str);
   kernel_names.push_back(build_tree_name_str);
   kernel_names.push_back(compute_sums_name_str);
+  kernel_names.push_back(sort_name_str);
 
   std::string kernel_file = std::string("bound_box.cl");
 
@@ -412,7 +417,7 @@ int main (int argc, char *argv[])
   CreateMemBuffer(&cv, &args, &host_memory);
 
 
-  /* Set local work size and global work sizes */
+  // Set local work size and global work sizes <]
   // TODO CAN BE optimized.
   size_t local_work_size[1] = {THREADS1};
   size_t global_work_size[1] = {THREADS1};
@@ -422,24 +427,27 @@ int main (int argc, char *argv[])
   SetArgs(&kernel_map[bounding_box_name_str], &args);
   SetArgs(&kernel_map[build_tree_name_str], &args);
   SetArgs(&kernel_map[compute_sums_name_str], &args);
+  SetArgs(&kernel_map[sort_name_str], &args);
 
-  ReadFromGpu(&cv, &args, &host_memory);
-  DebuggingPrintValue(&cv, &args, &host_memory, false);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+
  //Read memory and calculate summation tree on CPU
+ //
   HostMemory host_memory_test;
   AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
+  err = clFinish(cv.commands);
   ReadFromGpu(&cv, &args, &host_memory_test);
   CalculateSummation(&cv, &args, &host_memory_test);
   // Run summation Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  //err = clFinish(cv.commands);
+  err = clFinish(cv.commands);
   ReadFromGpu(&cv, &args, &host_memory);
   CheckSummation(&host_memory, &host_memory_test, num_nodes);
-  //err = clFinish(cv.commands);
-  DebuggingPrintValue(&cv, &args, &host_memory, false);
+  err = clFinish(cv.commands);
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[sort_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  //DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }
 

@@ -22,14 +22,15 @@ __kernel void bound_box(__global float *x_cords,
                         __global float* z_cords,
                         __global int* childl,
                         __global float* massl,
-                        __global float* startl,
+                        __global int* start,
+                        __global int* startl,
                         __global float* global_x_mins,
                         __global float* global_x_maxs,
                         __global float* global_y_mins,
                         __global float* global_y_maxs,
                         __global float* global_z_mins,
                         __global float* global_z_maxs,
-                        __global float* count,
+                        __global int* count,
                         __global volatile int* blocked,
                         __global volatile int* stepd,
                         __global volatile int* bottomd,
@@ -111,7 +112,7 @@ __kernel void bound_box(__global float *x_cords,
       // TODO bottomd;
 
       massl[k] = -1.0f;
-      startl[k] = 0;
+      start[k] = 0;
 
 
       x_cords[num_nodes] = (minx + maxx) * 0.5f;
@@ -130,14 +131,15 @@ __kernel void build_tree(__global volatile float *x_cords,
                         __global float* z_cords,
                         __global volatile int* child,
                         __global float* mass,
-                        __global float* start,
+                        __global int* start,
+                        __global int* sort,
                         __global float* global_x_mins,
                         __global float* global_x_maxs,
                         __global float* global_y_mins,
                         __global float* global_y_maxs,
                         __global float* global_z_mins,
                         __global float* global_z_maxs,
-                        __global float* count,
+                        __global int* count,
                         __global volatile int* blocked,
                         __global volatile int* step,
                         __global volatile int* bottom,
@@ -259,14 +261,15 @@ __kernel void compute_sums(__global volatile float *x_cords,
                         __global float* z_cords,
                         __global volatile int* children,
                         __global float* mass,
-                        __global float* start,
+                        __global int* start,
+                        __global int* sort,
                         __global float* global_x_mins,
                         __global float* global_x_maxs,
                         __global float* global_y_mins,
                         __global float* global_y_maxs,
                         __global float* global_z_mins,
                         __global float* global_z_maxs,
-                        __global float* count,
+                        __global int* count,
                         __global volatile int* blocked,
                         __global volatile int* step,
                         __global volatile int* bottom,
@@ -281,9 +284,6 @@ __kernel void compute_sums(__global volatile float *x_cords,
   // TODO chache kernel information
 
   bottom_value = *bottom;
-  if (get_global_id(0) == 0) {
-  printf("bottom value: %d \n", bottom_value);
-  }
   inc = get_global_size(0);
   // Align work to WARP SIZE
   k = (bottom_value & (-WARPSIZE)) + get_global_id(0);
@@ -301,9 +301,6 @@ __kernel void compute_sums(__global volatile float *x_cords,
       j = 0;
       for (i = 0; i < 8; i++) {
         child = children[k*8+i];
-        if (k == num_nodes) {
-           printf("Rear Child: %d \n", child);
-        }
         if (child >= 0) {
           if (i != j) {
             // Moving children to front. Apparently needed later
@@ -357,12 +354,54 @@ __kernel void compute_sums(__global volatile float *x_cords,
       count[k] = cnt;
       m = 1.0f / cm;
       x_cords[k] = px * m;
-      mem_fence(CLK_GLOBAL_MEM_FENCE);
       y_cords[k] = py * m;
       z_cords[k] = pz * m;
       mem_fence(CLK_GLOBAL_MEM_FENCE);
       mass[k] = cm;
       k += inc;
     }
+  }
+}
+__kernel void sort(__global volatile float *x_cords,
+                        __global float *y_cords,
+                        __global float* z_cords,
+                        __global volatile int* children,
+                        __global float* mass,
+                        __global int* start,
+                        __global int* sort,
+                        __global float* global_x_mins,
+                        __global float* global_x_maxs,
+                        __global float* global_y_mins,
+                        __global float* global_y_maxs,
+                        __global float* global_z_mins,
+                        __global float* global_z_maxs,
+                        __global int* count,
+                        __global volatile int* blocked,
+                        __global volatile int* step,
+                        __global volatile int* bottom,
+                        __global volatile int* maxdepth,
+                        __global volatile float* radiusd,
+                        const int num_bodies,
+                        const int num_nodes) {
+  int i, k, child, decrement, start_index, bottom_node;
+  bottom_node = *bottom;
+  decrement = get_global_size(0);
+  k = num_nodes + 1 - decrement + get_global_size(0);
+  while (k <= bottom_node) {
+    start_index = start[k];
+    if (start >= 0) {
+      for (i = 0; i < 8; i++) {
+        child = children[k*8+i];
+        if (child >= num_nodes) {
+          start[child] = start_index;
+          start_index += count[child];
+        } else if (child >= 0) {
+          sort[start_index] = child;
+          start_index++;
+        }
+      }
+      k -= decrement;
+    }
+   barrier(CLK_GLOBAL_MEM_FENCE);
   }
 }
