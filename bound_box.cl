@@ -180,7 +180,7 @@ __kernel void build_tree(__global volatile float *x_cords,
       py = y_cords[i];
       pz = z_cords[i];
       n = num_nodes;
-      //depth = 1;
+      depth = 1;
       r = radius;
       j = 0;
       if (rootx < px) j = 1;
@@ -411,8 +411,8 @@ __kernel void sort(__global volatile float *x_cords,
   int i, k, child, decrement, start_index, bottom_node;
   bottom_node = *bottom;
   decrement = get_global_size(0);
-  k = num_nodes + 1 - decrement + get_global_size(0);
-  while (k <= bottom_node) {
+  k = num_nodes + 1 - decrement + get_global_id(0);
+  while (k >= bottom_node) {
     start_index = start[k];
     if (start >= 0) {
       for (i = 0; i < 8; i++) {
@@ -427,7 +427,7 @@ __kernel void sort(__global volatile float *x_cords,
       }
       k -= decrement;
     }
-   barrier(CLK_GLOBAL_MEM_FENCE);
+   //barrier(CLK_GLOBAL_MEM_FENCE); //TODO how to add throttle? 
   }
 }
 inline int thread_vote(__local int* allBlock, int warpId, int cond)
@@ -484,7 +484,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
   int global_size = get_global_size(0);
 
   if (idx == 0) {
-    int itolsqd = 1.0 / (0.5*0.5);
+    int itolsqd = 1.0f / (0.5f*0.5f);
     shared_step = *step;
     shared_maxdepth = *maxdepth;
     temp = *radiusd;
@@ -508,9 +508,8 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     if (difference < MAXDEPTH) {
       dq[difference + shared_mem_offset] = dq[difference];
     }
-    barrier(CLK_GLOBAL_MEM_FENCE);
-  }
-  for (int k = idx; k < num_nodes; k+=global_size) {
+  barrier(CLK_GLOBAL_MEM_FENCE);
+  for (int k = idx; k < num_bodies; k+=global_size) {
     int index = sort[k];
     px = x_cords[index];
     py = y_cords[index];
@@ -520,6 +519,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     az = 0.0f;
     depth = shared_mem_offset;
     if (starting_warp_thread_id == idx) {
+      printf("Index: %d\n", index);
       parent_index[shared_mem_offset] = num_nodes;
       child_index[shared_mem_offset] = 0;
     }
@@ -528,7 +528,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
       // Stack has elements
       while(child_index[depth] < 8) {
         child = children[parent_index[depth]*8+child_index[depth]];
-        if (idx = starting_warp_thread_id) {
+        if (idx == starting_warp_thread_id) {
           child_index[depth]++;
         }
         mem_fence(CLK_GLOBAL_MEM_FENCE);
@@ -536,9 +536,9 @@ __kernel void calculate_forces(__global volatile float *x_cords,
           dx = x_cords[child] - px;
           dy = y_cords[child] - py;
           dz = z_cords[child] - pz;
-          temp = dx*dx + (dy*dy + (dz*dz + 0.0000001));
+          temp = dx*dx + (dy*dy + (dz*dz + 0.0000001f));
           //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
-          if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]) )) {
+          if ((child < num_bodies) || thread_vote(allBlocks, warp_id, temp >= dq[depth]) )  {
             temp = native_rsqrt(temp);
             temp = mass[child] * temp * temp *temp;
             ax += dx * temp;
@@ -570,6 +570,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     accy[index] = ay;
     accz[index] = az;
 
+    }
   }
 }
 
