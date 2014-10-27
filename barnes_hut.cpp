@@ -136,41 +136,53 @@ void SetArgs(cl_kernel *kernel, KernelArgs* args){
   CHK_ERR(err);
   err = clSetKernelArg(*kernel, 2, sizeof(cl_mem), &args->posz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 3, sizeof(cl_mem), &args->child);
+  err = clSetKernelArg(*kernel, 3, sizeof(cl_mem), &args->velx);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 4, sizeof(cl_mem), &args->mass);
+  err = clSetKernelArg(*kernel, 4, sizeof(cl_mem), &args->vely);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 5, sizeof(cl_mem), &args->start);
+  err = clSetKernelArg(*kernel, 5, sizeof(cl_mem), &args->velz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 6, sizeof(cl_mem), &args->count);
+  err = clSetKernelArg(*kernel, 6, sizeof(cl_mem), &args->accx);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 7, sizeof(cl_mem), &args->minx);
+  err = clSetKernelArg(*kernel, 7, sizeof(cl_mem), &args->accy);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 8, sizeof(cl_mem), &args->maxx);
+  err = clSetKernelArg(*kernel, 8, sizeof(cl_mem), &args->accz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 9, sizeof(cl_mem), &args->miny);
+  err = clSetKernelArg(*kernel, 9, sizeof(cl_mem), &args->child);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 10, sizeof(cl_mem), &args->maxy);
+  err = clSetKernelArg(*kernel, 10, sizeof(cl_mem), &args->mass);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 11, sizeof(cl_mem), &args->minz);
+  err = clSetKernelArg(*kernel, 11, sizeof(cl_mem), &args->start);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 12, sizeof(cl_mem), &args->maxz);
+  err = clSetKernelArg(*kernel, 12, sizeof(cl_mem), &args->count);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 13, sizeof(cl_mem), &args->count);
+  err = clSetKernelArg(*kernel, 13, sizeof(cl_mem), &args->minx);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 14, sizeof(cl_mem), &args->blocked);
+  err = clSetKernelArg(*kernel, 14, sizeof(cl_mem), &args->maxx);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 15, sizeof(cl_mem), &args->step);
+  err = clSetKernelArg(*kernel, 15, sizeof(cl_mem), &args->miny);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 16, sizeof(cl_mem), &args->bottom);
+  err = clSetKernelArg(*kernel, 16, sizeof(cl_mem), &args->maxy);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 17, sizeof(cl_mem), &args->max_depth);
+  err = clSetKernelArg(*kernel, 17, sizeof(cl_mem), &args->minz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 18, sizeof(cl_mem), &args->radius);
+  err = clSetKernelArg(*kernel, 18, sizeof(cl_mem), &args->maxz);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 19, sizeof(int), &args->num_bodies);
+  err = clSetKernelArg(*kernel, 19, sizeof(cl_mem), &args->count);
   CHK_ERR(err);
-  err = clSetKernelArg(*kernel, 20, sizeof(int), &args->num_nodes);
+  err = clSetKernelArg(*kernel, 20, sizeof(cl_mem), &args->blocked);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 21, sizeof(cl_mem), &args->step);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 22, sizeof(cl_mem), &args->bottom);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 23, sizeof(cl_mem), &args->max_depth);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 24, sizeof(cl_mem), &args->radius);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 25, sizeof(int), &args->num_bodies);
+  CHK_ERR(err);
+  err = clSetKernelArg(*kernel, 26, sizeof(int), &args->num_nodes);
   CHK_ERR(err);
 
 }
@@ -323,6 +335,79 @@ void CheckSorted(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes, int 
   }
 }
 
+void CalculateForce(HostMemory *host_memory, num_bodies) {
+  float dq[MAXDEPTH];
+  float parent_index[MAXDEPTH];
+  float child_index[MAXDEPTH];
+  float px, py, pz;
+  dq[0] = 1 / (0.5 * 0.5);
+  for (int i = 1; i < host_memory->max_depth; i++) {
+    dq[i] = dq[i - 1] * 0.25f;
+  }
+  if (max_depth > MAXDEPTH) {
+    return 1/0;
+  }
+  for (int k = 0; k < num_bodies; k+=WARPSIZE) {
+    //int index = host_memory->sort[k];
+    ax = 0.0f;
+    ay = 0.0f;
+    az = 0.0f;
+    parent_index[0] = num_nodes;
+    child_index[0] = 0;
+    while (depth >= 0) {
+      while (child_index[depth] < 8) {
+        child = host_memory->child[parent_index[depth]*8+child_index[depth]];
+        child_index[depth]++;
+        if (child >= 0) {
+          bool go_deeper;
+          for (int j = 0; j < WARPSIZE; j++) {
+            int index = host_memory->sort[k+j];
+            px = host_memory->posx[index];
+            py = host_memory->posy[index];
+            pz = host_memory->posz[index];
+            dx = host_memory->posx[child] - px;
+            dy = host_memory->posy[child] - py;
+            dz = host_memory->posz[child] - pz;
+            tmp = dx*dx + (dy*dy + (dz*dz + 0.00001));
+            if (! (child <= num_bodies || tmp >= dq[depth]) )  {
+              go_deeper = true;
+            }
+          }
+          if (!go_deeper) {
+            temp = rsqrtf(tmp);
+            temp = host-memory->mass[child] * temp * temp * temp;
+            for (int j = 0; i < WARPSIZE; j++) {
+              px = host_memory->posx[index];
+              py = host_memory->posy[index];
+              pz = host_memory->posz[index];
+              dx = host_memory->posx[child] - px;
+              dy = host_memory->posy[child] - py;
+              dz = host_memory->posz[child] - pz;
+              tmp = dx*dx + (dy*dy + (dz*dz + 0.00001));
+              ax += dx * temp;
+              ay += dy * temp;
+              az += dz * temp;
+            }
+          } else {
+            depth++;
+            parent_index[depth] = child;
+            child_index[depth] = 0;
+          }
+        } else {
+          depth = max(0, depth - 1);
+        }
+      }
+      depth--;
+    }
+    if (step > 0) {
+      host_memory->velx[
+
+
+
+
+    
+}
+
 
 void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
   int num_nodes = args->num_nodes;
@@ -393,9 +478,9 @@ int main (int argc, char *argv[])
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
-  //if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
-  //while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
-  //num_nodes--;
+  if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
+  while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
+  num_nodes--;
 
   KernelArgs args;
   args.num_nodes = num_nodes;
@@ -424,11 +509,13 @@ int main (int argc, char *argv[])
   string build_tree_name_str = std::string("build_tree");
   string compute_sums_name_str = string("compute_sums");
   string sort_name_str = string("sort");
+  string calculate_forces_name_str = string("calculate_forces");
 
   kernel_names.push_back(bounding_box_name_str);
   kernel_names.push_back(build_tree_name_str);
   kernel_names.push_back(compute_sums_name_str);
   kernel_names.push_back(sort_name_str);
+  kernel_names.push_back(calculate_forces_name_str);
 
   std::string kernel_file = std::string("bound_box.cl");
 
@@ -457,6 +544,7 @@ int main (int argc, char *argv[])
   SetArgs(&kernel_map[build_tree_name_str], &args);
   SetArgs(&kernel_map[compute_sums_name_str], &args);
   SetArgs(&kernel_map[sort_name_str], &args);
+  SetArgs(&kernel_map[calculate_forces_name_str], &args);
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
@@ -488,6 +576,8 @@ int main (int argc, char *argv[])
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[sort_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   ReadFromGpu(&cv, &args, &host_memory);
   CheckSorted(&host_memory_before_sorted, &host_memory, num_nodes, num_bodies);
+
+  err = clEnqueueNDRangeKernel(cv.commands, kernel_map[calculate_forces_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
 
   //DebuggingPrintValue(&cv, &args, &host_memory, false);
 

@@ -20,6 +20,12 @@
 __kernel void bound_box(__global float *x_cords,
                         __global float *y_cords,
                         __global float* z_cords,
+                        __global float* velx,
+                        __global float* vely,
+                        __global float* velz,
+                        __global float* accx,
+                        __global float* accy,
+                        __global float* accz,
                         __global int* childl,
                         __global float* massl,
                         __global int* start,
@@ -129,6 +135,12 @@ __kernel void bound_box(__global float *x_cords,
 __kernel void build_tree(__global volatile float *x_cords,
                         __global float *y_cords,
                         __global float* z_cords,
+                        __global float* velx,
+                        __global float* vely,
+                        __global float* velz,
+                        __global float* accx,
+                        __global float* accy,
+                        __global float* accz,
                         __global volatile int* child,
                         __global float* mass,
                         __global int* start,
@@ -248,17 +260,24 @@ __kernel void build_tree(__global volatile float *x_cords,
         mem_fence(CLK_GLOBAL_MEM_FENCE);
         child[locked] = patch;
        }
+        localmaxdepth = max(depth, localmaxdepth);
         i += inc;  // move on to next body
         skip = 1;
       }
       }
-     mem_fence(CLK_GLOBAL_MEM_FENCE);
   }
+  atomic_max(maxdepth, localmaxdepth);
 }
 
 __kernel void compute_sums(__global volatile float *x_cords,
                         __global float *y_cords,
                         __global float* z_cords,
+                        __global float* velx,
+                        __global float* vely,
+                        __global float* velz,
+                        __global float* accx,
+                        __global float* accy,
+                        __global float* accz,
                         __global volatile int* children,
                         __global float* mass,
                         __global int* start,
@@ -365,6 +384,12 @@ __kernel void compute_sums(__global volatile float *x_cords,
 __kernel void sort(__global volatile float *x_cords,
                         __global float *y_cords,
                         __global float* z_cords,
+                        __global float* velx,
+                        __global float* vely,
+                        __global float* velz,
+                        __global float* accx,
+                        __global float* accy,
+                        __global float* accz,
                         __global volatile int* children,
                         __global float* mass,
                         __global int* start,
@@ -405,3 +430,146 @@ __kernel void sort(__global volatile float *x_cords,
    barrier(CLK_GLOBAL_MEM_FENCE);
   }
 }
+inline int thread_vote(__local int* allBlock, int warpId, int cond)
+{
+     /*Relies on underlying wavefronts (not whole workgroup)*/
+       /*executing in lockstep to not require barrier */
+    return 1;
+    int old = allBlock[warpId];
+
+    // Increment if true, or leave unchanged 
+    (void) atomic_add(&allBlock[warpId], cond);
+
+    int ret = (allBlock[warpId] == WARPSIZE);
+    allBlock[warpId] = old;
+
+    return ret;
+}
+
+__kernel void calculate_forces(__global volatile float *x_cords,
+                        __global float *y_cords,
+                        __global float* z_cords,
+                        __global float* velx,
+                        __global float* vely,
+                        __global float* velz,
+                        __global float* accx,
+                        __global float* accy,
+                        __global float* accz,
+                        __global volatile int* children,
+                        __global float* mass,
+                        __global int* start,
+                        __global int* sort,
+                        __global float* global_x_mins,
+                        __global float* global_x_maxs,
+                        __global float* global_y_mins,
+                        __global float* global_y_maxs,
+                        __global float* global_z_mins,
+                        __global float* global_z_maxs,
+                        __global int* count,
+                        __global volatile int* blocked,
+                        __global volatile int* step,
+                        __global volatile int* bottom,
+                        __global volatile int* maxdepth,
+                        __global volatile float* radiusd,
+                        const int num_bodies,
+                        const int num_nodes) {
+  int warp_id, starting_warp_thread_id, shared_mem_offset, difference, depth, child;
+  __local volatile int child_index[MAXDEPTH * THREADS1/WARPSIZE], parent_index[MAXDEPTH * THREADS1/WARPSIZE];
+ __local volatile int allBlock[THREADS1 / WARPSIZE]; 
+  __local volatile float dq[MAXDEPTH * THREADS1/WARPSIZE];
+  __local volatile int shared_step, shared_maxdepth;
+  __local volatile int allBlocks[THREADS1/WARPSIZE];
+  float px, py, pz, ax, ay, az, dx, dy, dz, temp;
+  int idx = get_global_id(0);
+  int global_size = get_global_size(0);
+
+  if (idx == 0) {
+    int itolsqd = 1.0 / (0.5*0.5);
+    shared_step = *step;
+    shared_maxdepth = *maxdepth;
+    temp = *radiusd;
+    dq[0] = temp * temp * itolsqd;
+    for (int i = 1; i < shared_maxdepth; i++) {
+      dq[i] = dq[i - 1] * 0.25f;
+    }
+
+    if (shared_maxdepth > MAXDEPTH) {
+      temp =  1/0;
+    }
+  }
+  barrier(CLK_GLOBAL_MEM_FENCE);
+
+  if (shared_maxdepth <= MAXDEPTH) {
+    // Warp and memory ids
+    warp_id = idx / WARPSIZE;
+    starting_warp_thread_id = warp_id * WARPSIZE;
+    shared_mem_offset = warp_id * MAXDEPTH;
+    difference = idx - starting_warp_thread_id;
+    if (difference < MAXDEPTH) {
+      dq[difference + shared_mem_offset] = dq[difference];
+    }
+    barrier(CLK_GLOBAL_MEM_FENCE);
+  }
+  for (int k = idx; k < num_nodes; k+=global_size) {
+    int index = sort[k];
+    px = x_cords[index];
+    py = y_cords[index];
+    pz = z_cords[index];
+    ax = 0.0f;
+    ay = 0.0f;
+    az = 0.0f;
+    depth = shared_mem_offset;
+    if (starting_warp_thread_id == idx) {
+      parent_index[shared_mem_offset] = num_nodes;
+      child_index[shared_mem_offset] = 0;
+    }
+    mem_fence(CLK_GLOBAL_MEM_FENCE);
+    while (depth >= shared_mem_offset) {
+      // Stack has elements
+      while(child_index[depth] < 8) {
+        child = children[parent_index[depth]*8+child_index[depth]];
+        if (idx = starting_warp_thread_id) {
+          child_index[depth]++;
+        }
+        mem_fence(CLK_GLOBAL_MEM_FENCE);
+        if (child >= 0) {
+          dx = x_cords[child] - px;
+          dy = y_cords[child] - py;
+          dz = z_cords[child] - pz;
+          temp = dx*dx + (dy*dy + (dz*dz + 0.0000001));
+          //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
+          if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]) )) {
+            temp = native_rsqrt(temp);
+            temp = mass[child] * temp * temp *temp;
+            ax += dx * temp;
+            ay += dy * temp;
+            az += dz * temp;
+
+          } else {
+            depth++;
+            if (starting_warp_thread_id == idx) {
+              parent_index[depth] = child;
+              child_index[depth] = 0;
+            }
+            mem_fence(CLK_GLOBAL_MEM_FENCE);
+          }
+        } else {
+          depth = max(shared_mem_offset, depth - 1);
+        }
+      }
+      depth--;
+    }
+
+    if (shared_step > 0) {
+      velx[index] += (ax - accx[index]);
+      vely[index] += (ay - accy[index]);
+      velz[index] += (az - accz[index]);
+    }
+
+    accx[index] = ax;
+    accy[index] = ay;
+    accz[index] = az;
+
+  }
+}
+
