@@ -319,25 +319,17 @@ void CheckSummation(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes) {
 
 void CalculateSorted(int index, HostMemory* host_memory, int start, int num_nodes) {
   int bottom_node = host_memory->bottom;
-  cout << start << endl;
-  cout << index << endl;
+  int num_bodies = host_memory->num_bodies;
   for (int i = 0; i < 8; i++) {
     int child_index = host_memory->child[index*8+i];
-    cout << " Test : " << index*8 + i << endl;
-    cout << "child index " << child_index << endl;
-    if (child_index >= num_nodes) {
-      cout << "Test 1" << endl;
+    if (child_index >= host_memory->num_bodies) {
       host_memory->start[child_index] = start;
-      cout << start;
-      start += host_memory->count[child_index];
       CalculateSorted(child_index, host_memory, start, num_nodes);
+      start += host_memory->count[child_index];
     } else if (child_index >= 0) {
       host_memory->sort[start] = child_index;
       start++;
     }
-  }
-  for (int i = 0; i < 8; i++) {
-    cout << host_memory->sort[i] << endl;
   }
 }
 
@@ -385,16 +377,16 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
         if (child >= 0) {
           bool go_deeper = false;
           for (int j = 0; j < WARPSIZE; j++) {
-            cout << k + j << endl;
+            //cout << k + j << endl;
             int index = host_memory->sort[k+j];
-            cout << index << endl;
+            //cout << index << endl;
             px[j] = host_memory->posx[index];
             py[j] = host_memory->posy[index];
             pz[j] = host_memory->posz[index];
             dx[j] = host_memory->posx[child] - px[j];
             dy[j] = host_memory->posy[child] - py[j];
             dz[j] = host_memory->posz[child] - pz[j];
-            temp[j] = dx[j]*dx[j] + (dy[j]*dy[j] + (dz[j]*dz[j] + 0.00001));
+            temp[j] = dx[j]*dx[j] + (dy[j]*dy[j] + (dz[j]*dz[j] + 0.0001));
             if (! (child <= num_bodies || temp[j] >= dq[depth]) )  {
               go_deeper = true;
             }
@@ -453,7 +445,7 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
           float dx = host_memory->posx[child] - px;
           float dy = host_memory->posy[child] - py;
           float dz = host_memory->posz[child] - pz;
-          float tmp = dx*dx + (dy*dy + (dz*dz + 0.00001));
+          float tmp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           if (child < num_bodies) {
             tmp = 1 / sqrt(tmp);
             tmp = host_memory->mass[child] * tmp * tmp * tmp;
@@ -484,24 +476,24 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
 }
 
 void CheckForces(HostMemory* gpu_host, HostMemory* cpu_host) {
-  const float epsilon = 0.00001f;
+  const float epsilon = 0.0001f;
   for (int i = 0; i < cpu_host->num_bodies; i++) {
-    if (gpu_host->velx[i] - cpu_host->velx[i] > epsilon * cpu_host->velx[i]) {
+    if (abs(gpu_host->velx[i] - cpu_host->velx[i]) > epsilon) {
      cout << "Error at index: " << i << " for velx, cpu : " << cpu_host->velx[i] << " gpu : " <<  gpu_host->velx[i] << endl;
     }
-    if (gpu_host->vely[i] - cpu_host->vely[i] > epsilon * cpu_host->vely[i]) {
+    if (abs(gpu_host->vely[i] - cpu_host->vely[i]) > epsilon) {
      cout << "Error at index: " << i << " for vely, cpu : " << cpu_host->vely[i] << " gpu : " <<  gpu_host->vely[i] << endl;
     }
-    if (gpu_host->velz[i] - cpu_host->velz[i] > epsilon * cpu_host->velz[i]) {
+    if (abs(gpu_host->velz[i] - cpu_host->velz[i]) > epsilon) {
      cout << "Error at index: " << i << " for velz, cpu : " << cpu_host->velz[i] << " gpu : " <<  gpu_host->velz[i] << endl;
     }
-    if (gpu_host->accx[i] - cpu_host->accx[i] > epsilon * cpu_host->accx[i]) {
+    if (abs(gpu_host->accx[i] - cpu_host->accx[i]) > epsilon) {
      cout << "Error at index: " << i << " for accx, cpu : " << cpu_host->accx[i] << " gpu : " <<  gpu_host->accx[i] << endl;
     }
-    if (gpu_host->accy[i] - cpu_host->accy[i] > epsilon * cpu_host->accy[i]) {
+    if (abs(gpu_host->accy[i] - cpu_host->accy[i]) > epsilon) {
      cout << "Error at index: " << i << " for accy, cpu : " << cpu_host->accy[i] << " gpu : " <<  gpu_host->accy[i] << endl;
     }
-    if (gpu_host->accz[i] - cpu_host->accz[i] > epsilon * cpu_host->accz[i]) {
+    if (abs(gpu_host->accz[i] - cpu_host->accz[i]) > epsilon) {
      cout << "Error at index: " << i << " for accz, cpu : " << cpu_host->accz[i] << " gpu : " <<  gpu_host->accz[i] << endl;
     }
   }
@@ -520,17 +512,17 @@ void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
     NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->velx, true, 0, sizeof(float)*(num_nodes + 1), host_memory->velx, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->velx, true, 0, sizeof(float)*num_bodies, host_memory->velx, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->vely, true, 0, sizeof(float)*(num_nodes + 1), host_memory->vely, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->vely, true, 0, sizeof(float)*num_bodies, host_memory->vely, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->velz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->velz, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->velz, true, 0, sizeof(float)*num_bodies, host_memory->velz, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->accx, true, 0, sizeof(float)*(num_nodes + 1), host_memory->accx, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->accx, true, 0, sizeof(float)*num_bodies, host_memory->accx, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->accy, true, 0, sizeof(float)*(num_nodes + 1), host_memory->accy, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->accy, true, 0, sizeof(float)*num_bodies, host_memory->accy, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->accz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->accz, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->accz, true, 0, sizeof(float)*num_bodies, host_memory->accz, 0,
     NULL, NULL);
   err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(int)*8*(num_nodes + 1), host_memory->child, 0,
     NULL, NULL);
@@ -585,7 +577,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 2;
+  int split = 100;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -609,9 +601,9 @@ int main (int argc, char *argv[])
         host_memory.posx[i*(split*split)+j*(split)+k] = i;
         host_memory.posy[i*(split*split)+j*(split)+k] = j;
         host_memory.posz[i*(split*split)+j*(split)+k] = k;
-        host_memory.velx[i*(split*split)+j*(split)+k] = 1;
-        host_memory.vely[i*(split*split)+j*(split)+k] = 1;
-        host_memory.velz[i*(split*split)+j*(split)+k] = 1;
+        //host_memory.velx[i*(split*split)+j*(split)+k] = 1;
+        //host_memory.vely[i*(split*split)+j*(split)+k] = 1;
+        //host_memory.velz[i*(split*split)+j*(split)+k] = 1;
         host_memory.mass[i*(split*split)+j*(split)+k] = i+j+k;
       }
     }
@@ -703,7 +695,7 @@ int main (int argc, char *argv[])
   //ReadFromGpu(&cv, &args, &host_memory);
   //CheckForces(&host_memory, &host_memory_cpu_force_calc);
 
- // DebuggingPrintValue(&cv, &args, &host_memory, false);
+  //DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }
 

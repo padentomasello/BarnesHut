@@ -392,7 +392,7 @@ __kernel void sort(__global volatile float *x_cords,
                         __global float* accz,
                         __global volatile int* children,
                         __global float* mass,
-                        __global int* start,
+                        __global volatile int* start,
                         __global int* sort,
                         __global float* global_x_mins,
                         __global float* global_x_maxs,
@@ -414,10 +414,10 @@ __kernel void sort(__global volatile float *x_cords,
   k = num_nodes + 1 - decrement + get_global_id(0);
   while (k >= bottom_node) {
     start_index = start[k];
-    if (start >= 0) {
+    if (start_index >= 0) {
       for (i = 0; i < 8; i++) {
         child = children[k*8+i];
-        if (child >= num_nodes) {
+        if (child >= num_bodies) {
           start[child] = start_index;
           start_index += count[child];
         } else if (child >= 0) {
@@ -427,6 +427,7 @@ __kernel void sort(__global volatile float *x_cords,
       }
       k -= decrement;
     }
+    mem_fence(CLK_GLOBAL_MEM_FENCE);
    //barrier(CLK_GLOBAL_MEM_FENCE); //TODO how to add throttle? 
   }
 }
@@ -519,7 +520,6 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     az = 0.0f;
     depth = shared_mem_offset;
     if (starting_warp_thread_id == idx) {
-      printf("Index: %d\n", index);
       parent_index[shared_mem_offset] = num_nodes;
       child_index[shared_mem_offset] = 0;
     }
@@ -536,7 +536,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
           dx = x_cords[child] - px;
           dy = y_cords[child] - py;
           dz = z_cords[child] - pz;
-          temp = dx*dx + (dy*dy + (dz*dz + 0.0000001f));
+          temp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
           if ((child < num_bodies) || thread_vote(allBlocks, warp_id, temp >= dq[depth]) )  {
             temp = native_rsqrt(temp);
