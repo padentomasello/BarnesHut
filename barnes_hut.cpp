@@ -39,7 +39,7 @@ struct KernelArgs{
 struct HostMemory {
   float *mass, *posx, *posy, *posz, *velx, *vely, *velz, *accx, *accy, *accz;
   int* start, *child, *count, *sort;
-  int step, max_depth, bottom, blocked, num_nodes, num_bodies;
+  int step, max_depth, bottom, blocked, num_nodes, num_bodies, radius;
 };
 
 void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
@@ -363,8 +363,10 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
   int child;
   float px[WARPSIZE], py[WARPSIZE], pz[WARPSIZE], dx[WARPSIZE], dy[WARPSIZE], dz[WARPSIZE], temp[WARPSIZE],
         ax[WARPSIZE], ay[WARPSIZE], az[WARPSIZE];
-  dq[0] = 1 / (0.5 * 0.5);
+  int itolsqd = 1 / (0.5 * 0.5);
   int max_depth = host_memory->max_depth;
+  float temp1 = host_memory->radius;
+  dq[0] = temp1 * temp1 * itolsqd;
   for (int i = 1; i < host_memory->max_depth; i++) {
     dq[i] = dq[i - 1] * 0.25f;
   }
@@ -397,12 +399,27 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
             dx[j] = host_memory->posx[child] - px[j];
             dy[j] = host_memory->posy[child] - py[j];
             dz[j] = host_memory->posz[child] - pz[j];
-            temp[j] = dx[j]*dx[j] + (dy[j]*dy[j] + (dz[j]*dz[j] + 0.0001));
+            temp[j] = dx[j]*dx[j] + (dy[j]*dy[j] + (dz[j]*dz[j] + 0.0001f));
+            //if (k == 0 && child == 120  ) {
+              //cout << "cond: "<< (temp[j] >= dq[depth]) << endl;
+            //}
+            //if (k == 0 && child == 120  ) {
+              //cout << "temp: "<< (temp[j]) << endl;
+            //}
+            //if (k == 0 && child == 120  ) {
+              //cout << "dq: "<< dq[depth] << endl;
+            //}
+            //if (k == 0 && child == 120  ) {
+              //cout << "depth: "<< depth << endl;
+            //}
             if (! (child <= num_bodies || temp[j] >= dq[depth]) )  {
-              go_deeper = true;
+              go_deeper = true; 
             }
           }
           if (!go_deeper) {
+              if (k == 0) {
+                cout << "Go deaper: " << go_deeper << " child: " << child << endl;
+              }
             for (int j = 0; j < WARPSIZE; j++) {
               temp[j] = 1 / sqrt(temp[j]);
               temp[j] = host_memory->mass[child] * temp[j] * temp[j] * temp[j];
@@ -487,25 +504,25 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
 }
 
 void CheckForces(HostMemory* gpu_host, HostMemory* cpu_host) {
-  const float epsilon = 0.0001f;
+  const float epsilon = 0.00001f;
   for (int i = 0; i < cpu_host->num_bodies; i++) {
-    if (abs(gpu_host->velx[i] - cpu_host->velx[i]) > epsilon) {
+    if (abs((gpu_host->velx[i] - cpu_host->velx[i])/cpu_host->velx[i]) > epsilon) {
      cout << "Error at index: " << i << " for velx, cpu : " << cpu_host->velx[i] << " gpu : " <<  gpu_host->velx[i] << endl;
     }
-    if (abs(gpu_host->vely[i] - cpu_host->vely[i]) > epsilon) {
+    if (abs((gpu_host->vely[i] - cpu_host->vely[i])/cpu_host->vely[i]) > epsilon) {
      cout << "Error at index: " << i << " for vely, cpu : " << cpu_host->vely[i] << " gpu : " <<  gpu_host->vely[i] << endl;
     }
-    if (abs(gpu_host->velz[i] - cpu_host->velz[i]) > epsilon) {
+    if (abs((gpu_host->velz[i] - cpu_host->velz[i])/cpu_host->velz[i]) > epsilon) {
      cout << "Error at index: " << i << " for velz, cpu : " << cpu_host->velz[i] << " gpu : " <<  gpu_host->velz[i] << endl;
     }
     //cout << "velz: " << cpu_host->velz[i] << endl;
-    if (abs(gpu_host->accx[i] - cpu_host->accx[i]) > epsilon) {
+    if (abs((gpu_host->accx[i] - cpu_host->accx[i])/cpu_host->accx[i]) > epsilon) {
      cout << "Error at index: " << i << " for accx, cpu : " << cpu_host->accx[i] << " gpu : " <<  gpu_host->accx[i] << endl;
     }
-    if (abs(gpu_host->accy[i] - cpu_host->accy[i]) > epsilon) {
+    if (abs((gpu_host->accy[i] - cpu_host->accy[i])/cpu_host->accy[i]) > epsilon) {
      cout << "Error at index: " << i << " for accy, cpu : " << cpu_host->accy[i] << " gpu : " <<  gpu_host->accy[i] << endl;
     }
-    if (abs(gpu_host->accz[i] - cpu_host->accz[i]) > epsilon) {
+    if (abs((gpu_host->accz[i] - cpu_host->accz[i])/cpu_host->accz[i]) > epsilon) {
      cout << "Error at index: " << i << " for accz, cpu : " << cpu_host->accz[i] << " gpu : " <<  gpu_host->accz[i] << endl;
     }
   }
@@ -566,8 +583,7 @@ void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
   err = clEnqueueReadBuffer(cv->commands, args->bottom, true, 0, sizeof(int), &host_memory->bottom, 0,
     NULL, NULL);
   CHK_ERR(err);
-  float radius;
-  err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &radius, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &host_memory->radius, 0,
     NULL, NULL);
   CHK_ERR(err);
 }

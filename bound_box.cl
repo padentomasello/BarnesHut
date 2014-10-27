@@ -443,10 +443,10 @@ inline int thread_vote(__local int* allBlock, int warpId, int cond)
     (void) atomic_add(&allBlock[warpId], cond);
 
     int ret = (allBlock[warpId] == WARPSIZE);
-    printf("allBlock[warp]: %d warp %d \n", allBlock[warpId], warpId);
+    //printf("allBlock[warp]: %d warp %d \n", allBlock[warpId], warpId);
     allBlock[warpId] = 0;
 
-    printf("Return : %d \n", ret);
+    //printf("Return : %d \n", ret);
     return ret;
 }
 
@@ -546,10 +546,11 @@ __kernel void calculate_forces(__global volatile float *x_cords,
           temp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
           int thread_vote_num = thread_vote(allBlocks, warp_id, temp >= dq[depth]);
+          /*if ( child == 120 && idx < 16) printf("TEst 1: %d \n", temp>=dq[depth]);*/
+          /*if ( child == 120 && idx < 16) printf("temp: %.20f \n", temp);*/
+          /*if ( child == 120 && idx < 16) printf("dq: %.20f \n", dq[depth]);*/
+          /*if ( child == 120 && idx < 16) printf("depth: %d \n", depth);*/
           if ((child < num_bodies)  ||  thread_vote_num )  {
-            if (thread_vote_num == 1) {
-            printf("Test: vote: %d child: %d \n", thread_vote_num, child);
-            }
             temp = native_rsqrt(temp);
             temp = mass[child] * temp * temp *temp;
             ax += dx * temp;
