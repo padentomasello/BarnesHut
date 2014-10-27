@@ -14,7 +14,7 @@
 #define FACTOR5 5
 #define FACTOR6 3
 
-#define WARPSIZE 32
+#define WARPSIZE 16
 #define MAXDEPTH 32
 
 __kernel void bound_box(__global float *x_cords,
@@ -163,7 +163,6 @@ __kernel void build_tree(__global volatile float *x_cords,
   float rootx = x_cords[num_nodes];
   float rooty = y_cords[num_nodes];
   float rootz = z_cords[num_nodes];
-  sort[0] = 100;
   float r;
   int localmaxdepth = 1;
   int skip = 1;
@@ -413,11 +412,7 @@ __kernel void sort(__global volatile float *x_cords,
   bottom_node = *bottom;
   decrement = get_global_size(0);
   k = num_nodes + 1 - decrement + get_global_id(0);
-    printf("test\n");
-  sort[0] = 100;
-  sort[26] = 100;
   while (k >= bottom_node) {
-    printf("test\n");
     start_index = start[k];
     if (start_index >= 0) {
       for (i = 0; i < 8; i++) {
@@ -448,8 +443,10 @@ inline int thread_vote(__local int* allBlock, int warpId, int cond)
     (void) atomic_add(&allBlock[warpId], cond);
 
     int ret = (allBlock[warpId] == WARPSIZE);
-    allBlock[warpId] = old;
+    printf("allBlock[warp]: %d warp %d \n", allBlock[warpId], warpId);
+    allBlock[warpId] = 0;
 
+    printf("Return : %d \n", ret);
     return ret;
 }
 
@@ -548,7 +545,11 @@ __kernel void calculate_forces(__global volatile float *x_cords,
           dz = z_cords[child] - pz;
           temp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
-          if ((child < num_bodies) || thread_vote(allBlocks, warp_id, temp >= dq[depth]) )  {
+          int thread_vote_num = thread_vote(allBlocks, warp_id, temp >= dq[depth]);
+          if ((child < num_bodies)  ||  thread_vote_num )  {
+            if (thread_vote_num == 1) {
+            printf("Test: vote: %d child: %d \n", thread_vote_num, child);
+            }
             temp = native_rsqrt(temp);
             temp = mass[child] * temp * temp *temp;
             ax += dx * temp;
@@ -579,7 +580,6 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     accx[index] = ax;
     accy[index] = ay;
     accz[index] = az;
-    velz[index] = 100;
 
     }
   }
