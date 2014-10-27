@@ -93,13 +93,29 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
 
   //Set the following alligned on WARP boundaries
   int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
-    cl_buffer_region velxl_region = {0, 1*inc};
-    cl_buffer_region velyl_region = {1*inc, 2*inc};
-    cl_buffer_region velzl_region = {2*inc, 3*inc};
-    cl_buffer_region accxl_region = {3*inc, 4*inc};
-    cl_buffer_region accyl_region = {4*inc, 5*inc};
-    cl_buffer_region acczl_region = {5*inc, 6*inc};
-    cl_buffer_region sortl_region = {6*inc, 7*inc};
+  cout << "INC" << inc << endl;
+    cl_buffer_region velxl_region, velyl_region, velzl_region, accxl_region, accyl_region, acczl_region, sortl_region;
+    velxl_region.origin = 0;
+    velxl_region.size = inc;
+    velyl_region.origin = inc;
+    velyl_region.size = inc;
+    velzl_region.origin = 2*inc;
+    velzl_region.size = inc;
+    accxl_region.origin = 3*inc;
+    accxl_region.size = inc;
+    accyl_region.origin = 4*inc;
+    accyl_region.size = inc;
+    acczl_region.origin = 5*inc;
+    acczl_region.size = inc;
+    sortl_region.origin = 6*inc;
+    sortl_region.size = inc;
+    //cl_buffer_region velxl_region = {0, inc};
+    //cl_buffer_region velyl_region = {1*inc, 2*inc};
+    //cl_buffer_region velzl_region = {2*inc, 3*inc};
+    //cl_buffer_region accxl_region = {3*inc, 4*inc};
+    //cl_buffer_region accyl_region = {4*inc, 5*inc};
+    //cl_buffer_region acczl_region = {5*inc, 6*inc};
+    //cl_buffer_region sortl_region = {6*inc, 7*inc};
     args->velx = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
         CL_BUFFER_CREATE_TYPE_REGION, &velxl_region, &err);
     args->vely = clCreateSubBuffer(args->child, CL_MEM_READ_WRITE,
@@ -190,6 +206,7 @@ void SetArgs(cl_kernel *kernel, KernelArgs* args){
 void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   host->num_nodes = num_nodes;
   host->num_bodies = num_bodies;
+  int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
   host->step = -1;
   host->max_depth = -1;
   host->blocked = 0;
@@ -203,24 +220,24 @@ void AllocateHostMemory(HostMemory* host, int num_nodes, int num_bodies) {
   if (host->posy == NULL) {fprintf(stderr, "cannot allocate posy\n");  exit(-1);}
   host->posz = (float *)malloc(sizeof(float) * (num_nodes + 1));
   if (host->posz == NULL) {fprintf(stderr, "cannot allocate posz\n");  exit(-1);}
-  host->velx = (float *)malloc(sizeof(float) * num_bodies);
+  host->velx = (float *)malloc(sizeof(float) * inc);
   if (host->velx == NULL) {fprintf(stderr, "cannot allocate velx\n");  exit(-1);}
-  host->vely = (float *)malloc(sizeof(float) * num_bodies);
+  host->vely = (float *)malloc(sizeof(float) * inc);
   if (host->vely == NULL) {fprintf(stderr, "cannot allocate vely\n");  exit(-1);}
-  host->velz = (float *)malloc(sizeof(float) * num_bodies);
+  host->velz = (float *)malloc(sizeof(float) * inc);
   if (host->velz == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
-  host->accx = (float *)malloc(sizeof(float) * num_bodies);
+  host->accx = (float *)malloc(sizeof(float) * inc);
   if (host->accx == NULL) {fprintf(stderr, "cannot allocate velx\n");  exit(-1);}
-  host->accy = (float *)malloc(sizeof(float) * num_bodies);
+  host->accy = (float *)malloc(sizeof(float) * inc);
   if (host->accy == NULL) {fprintf(stderr, "cannot allocate vely\n");  exit(-1);}
-  host->accz = (float *)malloc(sizeof(float) * num_bodies);
+  host->accz = (float *)malloc(sizeof(float) * inc);
   if (host->accz == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
   host->child = (int *)malloc(sizeof(int) * 8*(num_nodes + 1));
   if (host->child == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
   // TODO This can be removed after debugging. Count is only used on GPU
   host->count = (int *)malloc(sizeof(int) *(num_nodes + 1));
   if (host->count == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
-  host->sort = (int *)malloc(sizeof(int) *(num_bodies));
+  host->sort = (int *)malloc(sizeof(int) *(inc));
   if (host->sort == NULL) {fprintf(stderr, "cannot allocate velz\n");  exit(-1);}
 }
 
@@ -487,6 +504,7 @@ void CheckForces(HostMemory* gpu_host, HostMemory* cpu_host) {
     if (abs(gpu_host->velz[i] - cpu_host->velz[i]) > epsilon) {
      cout << "Error at index: " << i << " for velz, cpu : " << cpu_host->velz[i] << " gpu : " <<  gpu_host->velz[i] << endl;
     }
+    //cout << "velz: " << cpu_host->velz[i] << endl;
     if (abs(gpu_host->accx[i] - cpu_host->accx[i]) > epsilon) {
      cout << "Error at index: " << i << " for accx, cpu : " << cpu_host->accx[i] << " gpu : " <<  gpu_host->accx[i] << endl;
     }
@@ -503,39 +521,56 @@ void CheckForces(HostMemory* gpu_host, HostMemory* cpu_host) {
 void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
+  int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
   cl_int err;
   err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posx, 0, NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posy, 0, NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->count, true, 0, sizeof(int)*(num_nodes+1), host_memory->count, 0,
     NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->velx, true, 0, sizeof(float)*num_bodies, host_memory->velx, 0,
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->velx, true, 0, sizeof(float)*inc, host_memory->velx, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->vely, true, 0, sizeof(float)*num_bodies, host_memory->vely, 0,
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->vely, true, 0, sizeof(float)*inc, host_memory->vely, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->velz, true, 0, sizeof(float)*num_bodies, host_memory->velz, 0,
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->velz, true, 0, sizeof(float)*inc, host_memory->velz, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->accx, true, 0, sizeof(float)*num_bodies, host_memory->accx, 0,
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->accx, true, 0, sizeof(float)*inc, host_memory->accx, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->accy, true, 0, sizeof(float)*num_bodies, host_memory->accy, 0,
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->accy, true, 0, sizeof(float)*inc, host_memory->accy, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->accz, true, 0, sizeof(float)*num_bodies, host_memory->accz, 0,
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->accz, true, 0, sizeof(float)*inc, host_memory->accz, 0,
     NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(int)*8*(num_nodes + 1), host_memory->child, 0,
     NULL, NULL);
-  err = clEnqueueReadBuffer(cv->commands, args->sort, true, 0, sizeof(int)*(num_bodies), host_memory->sort, 0,
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->sort, true, 0, sizeof(int)*inc, host_memory->sort, 0,
     NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->mass, true, 0, sizeof(float)*(num_nodes + 1), host_memory->mass, 0,
     NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->start, true, 0, sizeof(int)*(num_nodes + 1), host_memory->start, 0,
     NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->step, true, 0, sizeof(int), &host_memory->step, 0,
     NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->bottom, true, 0, sizeof(int), &host_memory->bottom, 0,
     NULL, NULL);
+  CHK_ERR(err);
   float radius;
   err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &radius, 0,
     NULL, NULL);
@@ -577,7 +612,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 100;
+  int split = 3;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
@@ -655,36 +690,40 @@ int main (int argc, char *argv[])
   SetArgs(&kernel_map[calculate_forces_name_str], &args);
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  CHK_ERR(err);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+  CHK_ERR(err);
 
- //Read memory and calculate summation tree on CPU
- //
-  HostMemory host_memory_test;
-  AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
-  err = clFinish(cv.commands);
-  ReadFromGpu(&cv, &args, &host_memory_test);
-  CalculateSummation(&cv, &args, &host_memory_test);
-  // Run summation Kernel
+ ////Read memory and calculate summation tree on CPU
+ ////
+  //HostMemory host_memory_test;
+  //AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
+  //err = clFinish(cv.commands);
+  //ReadFromGpu(&cv, &args, &host_memory_test);
+  //CalculateSummation(&cv, &args, &host_memory_test);
+  //// Run summation Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  err = clFinish(cv.commands);
+  //err = clFinish(cv.commands);
   ReadFromGpu(&cv, &args, &host_memory);
-  CheckSummation(&host_memory, &host_memory_test, num_nodes);
-  err = clFinish(cv.commands);
+  //CheckSummation(&host_memory, &host_memory_test, num_nodes);
+  //err = clFinish(cv.commands);
 
-  // TODO These tests can be condenses
-  HostMemory host_memory_before_sorted;
-  AllocateHostMemory(&host_memory_before_sorted, num_nodes, num_bodies);
-  ReadFromGpu(&cv, &args, &host_memory_before_sorted);
-  DebuggingPrintValue(&cv, &args, &host_memory_before_sorted, false);
-  CalculateSorted(num_nodes, &host_memory_before_sorted, 0, num_nodes);
+  //// TODO These tests can be condenses
+  //HostMemory host_memory_before_sorted;
+  //AllocateHostMemory(&host_memory_before_sorted, num_nodes, num_bodies);
+  //ReadFromGpu(&cv, &args, &host_memory_before_sorted);
+  ////DebuggingPrintValue(&cv, &args, &host_memory_before_sorted, false);
+  //CalculateSorted(num_nodes, &host_memory_before_sorted, 0, num_nodes);
 
 
 
   //// Run Sorted Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[sort_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  ReadFromGpu(&cv, &args, &host_memory);
-  CheckSorted(&host_memory, &host_memory_before_sorted, num_nodes, num_bodies);
+  CHK_ERR(err);
+  //clFlush(cv.commands);
+  //ReadFromGpu(&cv, &args, &host_memory);
+  //CheckSorted(&host_memory, &host_memory_before_sorted, num_nodes, num_bodies);
 
 
   //HostMemory host_memory_cpu_force_calc;

@@ -163,6 +163,7 @@ __kernel void build_tree(__global volatile float *x_cords,
   float rootx = x_cords[num_nodes];
   float rooty = y_cords[num_nodes];
   float rootz = z_cords[num_nodes];
+  sort[0] = 100;
   float r;
   int localmaxdepth = 1;
   int skip = 1;
@@ -412,15 +413,21 @@ __kernel void sort(__global volatile float *x_cords,
   bottom_node = *bottom;
   decrement = get_global_size(0);
   k = num_nodes + 1 - decrement + get_global_id(0);
+    printf("test\n");
+  sort[0] = 100;
+  sort[26] = 100;
   while (k >= bottom_node) {
+    printf("test\n");
     start_index = start[k];
     if (start_index >= 0) {
       for (i = 0; i < 8; i++) {
         child = children[k*8+i];
         if (child >= num_bodies) {
+          printf("Child1 : %d \n", child);
           start[child] = start_index;
           start_index += count[child];
         } else if (child >= 0) {
+          printf("Child : %d Index: %d, \n", child, start_index);
           sort[start_index] = child;
           start_index++;
         }
@@ -428,17 +435,16 @@ __kernel void sort(__global volatile float *x_cords,
       k -= decrement;
     }
     mem_fence(CLK_GLOBAL_MEM_FENCE);
-   //barrier(CLK_GLOBAL_MEM_FENCE); //TODO how to add throttle? 
+   //barrier(CLK_GLOBAL_MEM_FENCE); //TODO how to add throttle?
   }
 }
 inline int thread_vote(__local int* allBlock, int warpId, int cond)
 {
      /*Relies on underlying wavefronts (not whole workgroup)*/
        /*executing in lockstep to not require barrier */
-    return 1;
     int old = allBlock[warpId];
 
-    // Increment if true, or leave unchanged 
+    // Increment if true, or leave unchanged
     (void) atomic_add(&allBlock[warpId], cond);
 
     int ret = (allBlock[warpId] == WARPSIZE);
@@ -476,7 +482,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
                         const int num_nodes) {
   int warp_id, starting_warp_thread_id, shared_mem_offset, difference, depth, child;
   __local volatile int child_index[MAXDEPTH * THREADS1/WARPSIZE], parent_index[MAXDEPTH * THREADS1/WARPSIZE];
- __local volatile int allBlock[THREADS1 / WARPSIZE]; 
+ __local volatile int allBlock[THREADS1 / WARPSIZE];
   __local volatile float dq[MAXDEPTH * THREADS1/WARPSIZE];
   __local volatile int shared_step, shared_maxdepth;
   __local volatile int allBlocks[THREADS1/WARPSIZE];
@@ -497,6 +503,9 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     if (shared_maxdepth > MAXDEPTH) {
       temp =  1/0;
     }
+    for (int i = 0; i < THREADS1/WARPSIZE; i++) {
+      allBlocks[i] = 0;
+    }
   }
   barrier(CLK_GLOBAL_MEM_FENCE);
 
@@ -511,6 +520,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     }
   barrier(CLK_GLOBAL_MEM_FENCE);
   for (int k = idx; k < num_bodies; k+=global_size) {
+    atomic_add(&allBlock[warp_id], 1);
     int index = sort[k];
     px = x_cords[index];
     py = y_cords[index];
@@ -569,6 +579,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     accx[index] = ax;
     accy[index] = ay;
     accz[index] = az;
+    velz[index] = 100;
 
     }
   }
