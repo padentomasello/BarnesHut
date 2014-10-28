@@ -486,6 +486,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
   float px, py, pz, ax, ay, az, dx, dy, dz, temp;
   int idx = get_global_id(0);
   int global_size = get_global_size(0);
+  //printf("Radius %f \n", *radiusd);
 
   if (idx == 0) {
     int itolsqd = 1.0f / (0.5f*0.5f);
@@ -546,11 +547,18 @@ __kernel void calculate_forces(__global volatile float *x_cords,
           temp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
           int thread_vote_num = thread_vote(allBlocks, warp_id, temp >= dq[depth]);
-          /*if ( child == 120 && idx < 16) printf("TEst 1: %d \n", temp>=dq[depth]);*/
-          /*if ( child == 120 && idx < 16) printf("temp: %.20f \n", temp);*/
-          /*if ( child == 120 && idx < 16) printf("dq: %.20f \n", dq[depth]);*/
-          /*if ( child == 120 && idx < 16) printf("depth: %d \n", depth);*/
+          if (idx < 16 && child == 240) printf("TEst 1: %d \n", temp>=dq[depth]);
+          if ( idx < 16 && child == 240) printf("temp: %.20f \n", temp);
+          if (idx < 16 && child == 240) printf("dq: %.20f \n", dq[depth]);
+          if ( idx < 16 && child == 240) printf("depth: %d \n", depth);
+          if (  idx < 16 && child == 240) printf("temp >= dq[depth]: %d\n", temp>=dq[depth]);
+          if (index == 0) {
+            printf("Go deeper gpu: %d child %d, index: %d\n", !(thread_vote_num || child < num_bodies), child, index);
+          }
           if ((child < num_bodies)  ||  thread_vote_num )  {
+            /*if (index == 0) {*/
+              /*printf("Go deeper gpu: %d\n", child);*/
+            /*}*/
             temp = native_rsqrt(temp);
             temp = mass[child] * temp * temp *temp;
             ax += dx * temp;

@@ -39,7 +39,8 @@ struct KernelArgs{
 struct HostMemory {
   float *mass, *posx, *posy, *posz, *velx, *vely, *velz, *accx, *accy, *accz;
   int* start, *child, *count, *sort;
-  int step, max_depth, bottom, blocked, num_nodes, num_bodies, radius;
+  int step, max_depth, bottom, blocked, num_nodes, num_bodies;
+  float radius;
 };
 
 void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
@@ -366,6 +367,7 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
   int itolsqd = 1 / (0.5 * 0.5);
   int max_depth = host_memory->max_depth;
   float temp1 = host_memory->radius;
+  cout << "Radius" << temp1 << endl;
   dq[0] = temp1 * temp1 * itolsqd;
   for (int i = 1; i < host_memory->max_depth; i++) {
     dq[i] = dq[i - 1] * 0.25f;
@@ -400,26 +402,26 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
             dy[j] = host_memory->posy[child] - py[j];
             dz[j] = host_memory->posz[child] - pz[j];
             temp[j] = dx[j]*dx[j] + (dy[j]*dy[j] + (dz[j]*dz[j] + 0.0001f));
-            //if (k == 0 && child == 120  ) {
-              //cout << "cond: "<< (temp[j] >= dq[depth]) << endl;
-            //}
-            //if (k == 0 && child == 120  ) {
-              //cout << "temp: "<< (temp[j]) << endl;
-            //}
-            //if (k == 0 && child == 120  ) {
-              //cout << "dq: "<< dq[depth] << endl;
-            //}
-            //if (k == 0 && child == 120  ) {
-              //cout << "depth: "<< depth << endl;
-            //}
+            if (k == 0 && child == 240) {
+              cout << "cond: "<< (temp[j] >= dq[depth]) << endl;
+            }
+            if (k == 0 && child == 240 ) {
+              cout << "temp: "<< (temp[j]) << endl;
+            }
+            if (k == 0 && child == 240) {
+              cout << "dq: "<< dq[depth] << endl;
+            }
+            if (k == 0 && child == 240) {
+              cout << "depth: "<< depth << endl;
+            }
             if (! (child <= num_bodies || temp[j] >= dq[depth]) )  {
               go_deeper = true; 
             }
           }
+          if (k == 0) {
+            cout << "Go deaper: " << go_deeper << " child: " << child << endl;
+          }
           if (!go_deeper) {
-              if (k == 0) {
-                cout << "Go deaper: " << go_deeper << " child: " << child << endl;
-              }
             for (int j = 0; j < WARPSIZE; j++) {
               temp[j] = 1 / sqrt(temp[j]);
               temp[j] = host_memory->mass[child] * temp[j] * temp[j] * temp[j];
@@ -623,7 +625,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 4;
+  int split = 8;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
