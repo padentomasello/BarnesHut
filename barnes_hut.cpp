@@ -368,9 +368,12 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
   int max_depth = host_memory->max_depth;
   float temp1 = host_memory->radius;
   cout << "Radius" << temp1 << endl;
+  cout << host_memory->max_depth;
   dq[0] = temp1 * temp1 * itolsqd;
   for (int i = 1; i < host_memory->max_depth; i++) {
+    cout << "TEST";
     dq[i] = dq[i - 1] * 0.25f;
+    cout << "dq[i] " << dq[i] << " i" << endl;
   }
   if (max_depth > MAXDEPTH) {
     dq[0] = 1/0;
@@ -402,16 +405,16 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
             dy[j] = host_memory->posy[child] - py[j];
             dz[j] = host_memory->posz[child] - pz[j];
             temp[j] = dx[j]*dx[j] + (dy[j]*dy[j] + (dz[j]*dz[j] + 0.0001f));
-            if (k == 0 && child == 240) {
+            if (k == 0 && child == 241) {
               cout << "cond: "<< (temp[j] >= dq[depth]) << endl;
             }
-            if (k == 0 && child == 240 ) {
+            if (k == 0 && child == 241 ) {
               cout << "temp: "<< (temp[j]) << endl;
             }
-            if (k == 0 && child == 240) {
+            if (k == 0 && child == 241) {
               cout << "dq: "<< dq[depth] << endl;
             }
-            if (k == 0 && child == 240) {
+            if (k == 0 && child == 241) {
               cout << "depth: "<< depth << endl;
             }
             if (! (child <= num_bodies || temp[j] >= dq[depth]) )  {
@@ -583,6 +586,9 @@ void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
     NULL, NULL);
   CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->bottom, true, 0, sizeof(int), &host_memory->bottom, 0,
+    NULL, NULL);
+  CHK_ERR(err);
+  err = clEnqueueReadBuffer(cv->commands, args->max_depth, true, 0, sizeof(int), &host_memory->max_depth, 0,
     NULL, NULL);
   CHK_ERR(err);
   err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &host_memory->radius, 0,
