@@ -625,7 +625,7 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 8;
+  int split = 5;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
