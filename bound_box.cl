@@ -418,11 +418,9 @@ __kernel void sort(__global volatile float *x_cords,
       for (i = 0; i < 8; i++) {
         child = children[k*8+i];
         if (child >= num_bodies) {
-          printf("Child1 : %d \n", child);
           start[child] = start_index;
           start_index += count[child];
         } else if (child >= 0) {
-          printf("Child : %d Index: %d, \n", child, start_index);
           sort[start_index] = child;
           start_index++;
         }
@@ -477,6 +475,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
                         __global volatile float* radiusd,
                         const int num_bodies,
                         const int num_nodes) {
+  int idx = get_global_id(0);
   int warp_id, starting_warp_thread_id, shared_mem_offset, difference, depth, child;
   __local volatile int child_index[MAXDEPTH * THREADS1/WARPSIZE], parent_index[MAXDEPTH * THREADS1/WARPSIZE];
  __local volatile int allBlock[THREADS1 / WARPSIZE];
@@ -484,7 +483,6 @@ __kernel void calculate_forces(__global volatile float *x_cords,
   __local volatile int shared_step, shared_maxdepth;
   __local volatile int allBlocks[THREADS1/WARPSIZE];
   float px, py, pz, ax, ay, az, dx, dy, dz, temp;
-  int idx = get_global_id(0);
   int global_size = get_global_size(0);
   //printf("Radius %f \n", *radiusd);
 
@@ -546,19 +544,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
           dz = z_cords[child] - pz;
           temp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
-          int thread_vote_num = thread_vote(allBlocks, warp_id, temp >= dq[depth]);
-          if (idx < 16 && child == 241) printf("TEst 1: %d \n", temp>=dq[depth]);
-          if ( idx < 16 && child == 241) printf("temp: %.20f \n", temp);
-          if (idx < 16 && child == 241) printf("dq: %.20f \n", dq[depth]);
-          if ( idx < 16 && child == 241) printf("depth: %d \n", depth);
-          if (  idx < 16 && child == 241) printf("temp >= dq[depth]: %d\n", temp>=dq[depth]);
-          if (index == 0) {
-            printf("Go deeper gpu: %d child %d, index: %d\n", !(thread_vote_num || child < num_bodies), child, index);
-          }
-          if ((child < num_bodies)  ||  thread_vote_num )  {
-            /*if (index == 0) {*/
-              /*printf("Go deeper gpu: %d\n", child);*/
-            /*}*/
+          if ((child < num_bodies)  ||  thread_vote(allBlocks, warp_id, temp >= dq[depth]) )  {
             temp = native_rsqrt(temp);
             temp = mass[child] * temp * temp *temp;
             ax += dx * temp;
@@ -566,9 +552,6 @@ __kernel void calculate_forces(__global volatile float *x_cords,
             az += dz * temp;
 
           } else {
-            /*if (index == 0) {*/
-            /*printf("WENT DEAP \n");*/
-            /*}*/
             depth++;
             if (starting_warp_thread_id == idx) {
               parent_index[depth] = child;

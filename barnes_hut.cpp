@@ -509,7 +509,7 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
 }
 
 void CheckForces(HostMemory* gpu_host, HostMemory* cpu_host) {
-  const float epsilon = 0.00001f;
+  const float epsilon = 0.001f;
   for (int i = 0; i < cpu_host->num_bodies; i++) {
     if (abs((gpu_host->velx[i] - cpu_host->velx[i])/cpu_host->velx[i]) > epsilon) {
      cout << "Error at index: " << i << " for velx, cpu : " << cpu_host->velx[i] << " gpu : " <<  gpu_host->velx[i] << endl;
@@ -631,15 +631,15 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 5;
+  int split = 89;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
   int blocks = 4; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
-  //if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
-  //while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
-  //num_nodes--;
+  if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
+  while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
+  num_nodes--;
 
   KernelArgs args;
   args.num_nodes = num_nodes;
@@ -715,25 +715,25 @@ int main (int argc, char *argv[])
 
  //Read memory and calculate summation tree on CPU
  //
-  HostMemory host_memory_test;
-  AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
-  err = clFinish(cv.commands);
-  ReadFromGpu(&cv, &args, &host_memory_test);
-  CalculateSummation(&cv, &args, &host_memory_test);
+  //HostMemory host_memory_test;
+  //AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
+  //err = clFinish(cv.commands);
+  //ReadFromGpu(&cv, &args, &host_memory_test);
+  //CalculateSummation(&cv, &args, &host_memory_test);
   // Run summation Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   //err = clFinish(cv.commands);
-  ReadFromGpu(&cv, &args, &host_memory);
-  CheckSummation(&host_memory, &host_memory_test, num_nodes);
-  err = clFinish(cv.commands);
+  //ReadFromGpu(&cv, &args, &host_memory);
+  //CheckSummation(&host_memory, &host_memory_test, num_nodes);
+  //err = clFinish(cv.commands);
 
   //// TODO These tests can be condenses
-  HostMemory host_memory_before_sorted;
-  AllocateHostMemory(&host_memory_before_sorted, num_nodes, num_bodies);
-  ReadFromGpu(&cv, &args, &host_memory_before_sorted);
+  //HostMemory host_memory_before_sorted;
+  //AllocateHostMemory(&host_memory_before_sorted, num_nodes, num_bodies);
+  //ReadFromGpu(&cv, &args, &host_memory_before_sorted);
   //DebuggingPrintValue(&cv, &args, &host_memory_before_sorted, false);
-  CalculateSorted(num_nodes, &host_memory_before_sorted, 0, num_nodes);
+  //CalculateSorted(num_nodes, &host_memory_before_sorted, 0, num_nodes);
 
 
 
@@ -741,19 +741,19 @@ int main (int argc, char *argv[])
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[sort_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   //clFlush(cv.commands);
-  ReadFromGpu(&cv, &args, &host_memory);
-  CheckSorted(&host_memory, &host_memory_before_sorted, num_nodes, num_bodies);
+  //ReadFromGpu(&cv, &args, &host_memory);
+  //CheckSorted(&host_memory, &host_memory_before_sorted, num_nodes, num_bodies);
 
 
-  HostMemory host_memory_cpu_force_calc;
-  AllocateHostMemory(&host_memory_cpu_force_calc, num_nodes, num_bodies);
-  ReadFromGpu(&cv, &args, &host_memory_cpu_force_calc);
-  CalculateForce(&host_memory_cpu_force_calc, num_bodies);
+  //HostMemory host_memory_cpu_force_calc;
+  //AllocateHostMemory(&host_memory_cpu_force_calc, num_nodes, num_bodies);
+  //ReadFromGpu(&cv, &args, &host_memory_cpu_force_calc);
+  //CalculateForce(&host_memory_cpu_force_calc, num_bodies);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[calculate_forces_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   ReadFromGpu(&cv, &args, &host_memory);
-  CheckForces(&host_memory, &host_memory_cpu_force_calc);
+  //CheckForces(&host_memory, &host_memory_cpu_force_calc);
 
-  //DebuggingPrintValue(&cv, &args, &host_memory, false);
+  DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }
 
