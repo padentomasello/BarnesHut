@@ -28,6 +28,36 @@ using namespace std;
 
 #define WARPSIZE 16
 #define MAXDEPTH 32
+//
+// random number generator
+
+#define MULT 1103515245
+#define ADD 12345
+#define MASK 0x7FFFFFFF
+#define TWOTO31 2147483648.0
+
+static int A = 1;
+static int B = 0;
+static int randx = 1;
+static int lastrand;
+
+
+static void drndset(int seed)
+{
+   A = 1;
+   B = 0;
+   randx = (A * seed + B) & MASK;
+   A = (MULT * A) & MASK;
+   B = (MULT * B + ADD) & MASK;
+}
+
+
+static double drnd()
+{
+   lastrand = randx;
+   randx = (A * randx + B) & MASK;
+   return (double)lastrand / TWOTO31;
+}
 
 struct KernelArgs{
   cl_mem posx, posy, posz, child, mass, start, minx, maxx, miny, maxy, minz, maxz, blocked, step, bottom, max_depth, radius, count;
@@ -242,6 +272,7 @@ void CalculateSummation(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory
   int num_bodies = args->num_bodies;
   int child, cnt, j;
 
+  cout << "bottom: " << bottom << endl;
   for (int parent = bottom; parent <= num_nodes; parent++) {
     float px = 0.0f;
     float py = 0.0f;
@@ -309,18 +340,18 @@ void CheckTree(int index, HostMemory *host_memory,int  num_bodies) {
 }
 
 void CheckSummation(HostMemory* gpu_host, HostMemory* cpu_host, int num_nodes) {
-  const float epsilon = 0.000001;
+  const float epsilon = 0.00001;
   for(int i = cpu_host->bottom; i <= num_nodes; i++) {
-    if (gpu_host->posx[i] - cpu_host->posx[i] > (epsilon*cpu_host->posx[i])) {
+    if (abs((gpu_host->posx[i] - cpu_host->posx[i])/cpu_host->posx[i]) > epsilon) {
       cout << "Summation x ERROR at i: " << i << " cout gpu: " << gpu_host->posx[i] << " cout cpu: " << cpu_host->posx[i] << endl;
     }
-    if (gpu_host->posy[i] - cpu_host->posy[i] > (epsilon*cpu_host->posy[i])) {
+    if (abs((gpu_host->posy[i] - cpu_host->posy[i])/cpu_host->posy[i]) > epsilon) {
       cout << "Summation y ERROR at i: " << i << " cout gpu: " << gpu_host->posy[i] << " cout cpu: " << cpu_host->posy[i] << endl;
     }
-    if (gpu_host->posz[i] - cpu_host->posz[i] > (epsilon*cpu_host->posz[i])) {
+    if (abs((gpu_host->posz[i] - cpu_host->posz[i])/cpu_host->posz[i]) > epsilon) {
       cout << "Summation z ERROR at i: " << i << " cout gpu: " << gpu_host->posz[i] << " cout cpu: " << cpu_host->posz[i] << endl;
     }
-    if (abs(gpu_host->mass[i] - cpu_host->mass[i]) > (epsilon*cpu_host->mass[i])) {
+    if (abs((gpu_host->mass[i] - cpu_host->mass[i])/cpu_host->mass[i]) > epsilon) {
       cout << "Summation mass ERROR at i: " << i << " cout gpu: " << gpu_host->mass[i] << " cout cpu: " << cpu_host->mass[i] << endl;
     }
     if (gpu_host->count[i] - cpu_host->count[i] > 0) {
@@ -461,9 +492,14 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
   }
   for(; k < num_bodies; k++) {
     int index = host_memory->sort[k];
-    int px = host_memory->posx[index];
-    int py = host_memory->posy[index];
-    int pz = host_memory->posz[index];
+    cout << "index: " << index << endl;
+    float px1 = host_memory->posx[index];
+    float py1 = host_memory->posy[index];
+    float pz1 = host_memory->posz[index];
+    //if (index == 0) {
+      cout << "child:  "<< child << " dx: " << dx << " dy: " << dy << " dz: " << dz << endl;
+      cout << "child:  "<< child << " px: " << px1 << " py: " << py1 << " pz: " << pz1 << endl;
+    //}
     float ax = 0.0f;
     float ay = 0.0f;
     float az = 0.0f;
@@ -475,9 +511,13 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
         child = host_memory->child[parent_index[depth]*8 + child_index[depth]];
         child_index[depth]++;
         if (child >= 0) {
-          float dx = host_memory->posx[child] - px;
-          float dy = host_memory->posy[child] - py;
-          float dz = host_memory->posz[child] - pz;
+          float dx = host_memory->posx[child] - px1;
+          float dy = host_memory->posy[child] - py1;
+          float dz = host_memory->posz[child] - pz1;
+          //if (index == 0) {
+            //cout << "child:  "<< child << " dx: " << dx << " dy: " << dy << " dz: " << dz << endl;
+            //cout << "child:  "<< child << " px: " << px << " py: " << py << " pz: " << pz << endl;
+          //}
           float tmp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           if (child < num_bodies) {
             tmp = 1 / sqrt(tmp);
@@ -631,17 +671,25 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 100;
-  int num_bodies = pow(split, 3);
+  int num_bodies = atoi(argv[1]);
+  if (num_bodies < 1) {
+    fprintf(stderr, "nbodies is too small: %d\n", num_bodies);
+    exit(-1);
+  }
+  if (num_bodies > (1 << 30)) {
+    fprintf(stderr, "nbodies is too large: %d\n", num_bodies);
+    exit(-1);
+  }
+  int num_nodes = num_bodies * 2;
+  int blocks = 32; // TODO Supposed to be set to multiprocecsor count
+  if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
+  while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
+  num_nodes--;
+
   printf("Number Bodies: %d \n", num_bodies);
   cout << "work group size: " << CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE << endl;
   cout << "work group size: " << CL_KERNEL_WORK_GROUP_SIZE << endl;
-  int blocks = 32; // TODO Supposed to be set to multiprocecsor count
 
-  int num_nodes = num_bodies * 2;
-  //if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
-  //while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
-  //num_nodes--;
 
   KernelArgs args;
   args.num_nodes = num_nodes;
@@ -650,20 +698,56 @@ int main (int argc, char *argv[])
   HostMemory host_memory;
   AllocateHostMemory(&host_memory, num_nodes, num_bodies);
 
-  // Sample Values
-  for (int i = 0; i < split; i++) {
-    for (int j = 0; j < split; j++) {
-      for (int k = 0; k < split; k++) {
-        host_memory.posx[i*(split*split)+j*(split)+k] = i;
-        host_memory.posy[i*(split*split)+j*(split)+k] = j;
-        host_memory.posz[i*(split*split)+j*(split)+k] = k;
-        //host_memory.velx[i*(split*split)+j*(split)+k] = 1;
-        //host_memory.vely[i*(split*split)+j*(split)+k] = 1;
-        //host_memory.velz[i*(split*split)+j*(split)+k] = 1;
-        host_memory.mass[i*(split*split)+j*(split)+k] = i+j+k;
-      }
-    }
+  float rsc, vsc, r, x, y, z, sq, scale, v;
+  int i;
+  drndset(7);
+  rsc = (3 * 3.1415926535897932384626433832795) / 16;
+  vsc = sqrt(1.0 / rsc);
+  for (i = 0; i < num_bodies; i++) {
+    host_memory.mass[i] = 1.0 / num_bodies;
+    r = 1.0 / sqrt(pow(drnd()*0.999, -2.0/3.0) - 1);
+    do {
+      x = drnd()*2.0 - 1.0;
+      y = drnd()*2.0 - 1.0;
+      z = drnd()*2.0 - 1.0;
+      sq = x*x + y*y + z*z;
+    } while (sq > 1.0);
+    scale = rsc * r / sqrt(sq);
+    host_memory.posx[i] = x * scale;
+    host_memory.posy[i] = y * scale;
+    host_memory.posz[i] = z * scale;
+
+    do {
+      x = drnd();
+      y = drnd() * 0.1;
+    } while (y > x*x * pow(1 - x*x, 3.5));
+    v = x * sqrt(2.0 / sqrt(1 + r*r));
+    do {
+      x = drnd()*2.0 - 1.0;
+      y = drnd()*2.0 - 1.0;
+      z = drnd()*2.0 - 1.0;
+      sq = x*x + y*y + z*z;
+    } while (sq > 1.0);
+    scale = vsc * v / sqrt(sq);
+    host_memory.velx[i] = x * scale;
+    host_memory.vely[i] = y * scale;
+    host_memory.velz[i] = z * scale;
   }
+
+  // Sample Values
+  //for (int i = 0; i < split; i++) {
+    //for (int j = 0; j < split; j++) {
+      //for (int k = 0; k < split; k++) {
+        //host_memory.posx[i*(split*split)+j*(split)+k] = i;
+        //host_memory.posy[i*(split*split)+j*(split)+k] = j;
+        //host_memory.posz[i*(split*split)+j*(split)+k] = k;
+        ////host_memory.velx[i*(split*split)+j*(split)+k] = 1;
+        ////host_memory.vely[i*(split*split)+j*(split)+k] = 1;
+        ////host_memory.velz[i*(split*split)+j*(split)+k] = 1;
+        //host_memory.mass[i*(split*split)+j*(split)+k] = i+j+k;
+      //}
+    //}
+  //}
 
   std::string kernel_source_str;
 
@@ -707,7 +791,7 @@ int main (int argc, char *argv[])
   // Set local work size and global work sizes <]
   // TODO CAN BE optimized.
   size_t local_work_size[1] = {THREADS1};
-  size_t global_work_size[1] = {8*THREADS1};
+  size_t global_work_size[1] = {THREADS1};
 
   //cout << clGetKernelWorkGroupInfo ( kernel_map[bounding_box_name_str], cl_device_id device, 
       //cl_kernel_work_group_info param_name, size_t param_value_size, void *param_value,
@@ -727,18 +811,20 @@ int main (int argc, char *argv[])
 
  //Read memory and calculate summation tree on CPU
  //
-  //HostMemory host_memory_test;
-  //AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
-  //err = clFinish(cv.commands);
-  //ReadFromGpu(&cv, &args, &host_memory_test);
-  //CalculateSummation(&cv, &args, &host_memory_test);
+  HostMemory host_memory_test;
+  AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
+  err = clFinish(cv.commands);
+  ReadFromGpu(&cv, &args, &host_memory_test);
+  err = clFinish(cv.commands);
+  CalculateSummation(&cv, &args, &host_memory_test);
   // Run summation Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
-  //err = clFinish(cv.commands);
-  //ReadFromGpu(&cv, &args, &host_memory);
-  //CheckSummation(&host_memory, &host_memory_test, num_nodes);
-  //err = clFinish(cv.commands);
+  err = clFinish(cv.commands);
+  ReadFromGpu(&cv, &args, &host_memory);
+  clFinish(cv.commands);
+  CheckSummation(&host_memory, &host_memory_test, num_nodes);
+  err = clFinish(cv.commands);
 
   //// TODO These tests can be condenses
   //HostMemory host_memory_before_sorted;

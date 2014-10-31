@@ -23,7 +23,7 @@ void initialize_ocl(cl_vars_t& cv)
   CHK_ERR(cv.err);
 
 
-#ifdef DEBUG
+//#ifdef DEBUG
   std::cout << "CL fill vars success" << std::endl;
 
   // Device info
@@ -31,7 +31,11 @@ void initialize_ocl(cl_vars_t& cv)
   cv.err = clGetDeviceInfo(cv.device_id, CL_DEVICE_GLOBAL_MEM_SIZE, 
 			   sizeof(cl_ulong), &mem_size, NULL);
 
-  std::cout << "Global mem size: " << mem_size << std::endl;
+  cl_uint max_compute_units;
+  cv.err = clGetDeviceInfo(cv.device_id, CL_DEVICE_MAX_COMPUTE_UNITS, 
+			   sizeof(cl_uint), &max_compute_units, NULL);
+  std::cout << "Max compute units: " << max_compute_units << std::endl;
+
 
   size_t max_work_item[3];
   cv.err = clGetDeviceInfo(cv.device_id, CL_DEVICE_MAX_WORK_ITEM_SIZES, 
@@ -42,7 +46,7 @@ void initialize_ocl(cl_vars_t& cv)
 	    << max_work_item[1] << ", " 
 	    << max_work_item[2] 
 	    << std::endl;
-#endif
+//#endif
 }
 
 void uninitialize_ocl(cl_vars_t & clv)
@@ -138,6 +142,7 @@ void compile_ocl_program(std::map<std::string, cl_kernel> &kernels,
       cv.kernels.push_back(kernel);
       kernels[*it] = kernel;
     }
+
 }
 
 
