@@ -16,7 +16,7 @@
 
 #define WARPSIZE 16
 #define MAXDEPTH 32
-
+__attribute__ ((reqd_work_group_size(THREADS1, 1, 1)))
 __kernel void bound_box(__global float *x_cords,
                         __global float *y_cords,
                         __global float* z_cords,
@@ -442,7 +442,7 @@ inline int thread_vote(__local int* allBlock, int warpId, int cond)
 
     int ret = (allBlock[warpId] == WARPSIZE);
     //printf("allBlock[warp]: %d warp %d \n", allBlock[warpId], warpId);
-    allBlock[warpId] = 0;
+    allBlock[warpId] = old;
 
     //printf("Return : %d \n", ret);
     return ret;
@@ -476,6 +476,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
                         const int num_bodies,
                         const int num_nodes) {
   int idx = get_global_id(0);
+  int k, index, i;
   int warp_id, starting_warp_thread_id, shared_mem_offset, difference, depth, child;
   __local volatile int child_index[MAXDEPTH * THREADS1/WARPSIZE], parent_index[MAXDEPTH * THREADS1/WARPSIZE];
  __local volatile int allBlock[THREADS1 / WARPSIZE];
@@ -486,38 +487,38 @@ __kernel void calculate_forces(__global volatile float *x_cords,
   int global_size = get_global_size(0);
   //printf("Radius %f \n", *radiusd);
 
-  if (idx == 0) {
+  if (get_local_id(0) == 0) {
     int itolsqd = 1.0f / (0.5f*0.5f);
     shared_step = *step;
     shared_maxdepth = *maxdepth;
     temp = *radiusd;
     dq[0] = temp * temp * itolsqd;
-    for (int i = 1; i < shared_maxdepth; i++) {
+    for (i = 1; i < shared_maxdepth; i++) {
       dq[i] = dq[i - 1] * 0.25f;
     }
 
     if (shared_maxdepth > MAXDEPTH) {
-      temp =  1/0;
+      //temp =  1/0;
     }
-    for (int i = 0; i < THREADS1/WARPSIZE; i++) {
+    for (i = 0; i < THREADS1/WARPSIZE; i++) {
       allBlocks[i] = 0;
     }
   }
-  barrier(CLK_GLOBAL_MEM_FENCE);
+  barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
 
   if (shared_maxdepth <= MAXDEPTH) {
     // Warp and memory ids
-    warp_id = idx / WARPSIZE;
+    warp_id = get_local_id(0) / WARPSIZE;
     starting_warp_thread_id = warp_id * WARPSIZE;
     shared_mem_offset = warp_id * MAXDEPTH;
-    difference = idx - starting_warp_thread_id;
+    difference = get_local_id(0) - starting_warp_thread_id;
     if (difference < MAXDEPTH) {
       dq[difference + shared_mem_offset] = dq[difference];
     }
-  barrier(CLK_GLOBAL_MEM_FENCE);
-  for (int k = idx; k < num_bodies; k+=global_size) {
-    atomic_add(&allBlock[warp_id], 1);
-    int index = sort[k];
+  barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
+  for (k = idx; k < num_bodies; k+=global_size) {
+    //atomic_add(&allBlock[warp_id], 1);
+    index = sort[k];
     px = x_cords[index];
     py = y_cords[index];
     pz = z_cords[index];
@@ -525,19 +526,19 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     ay = 0.0f;
     az = 0.0f;
     depth = shared_mem_offset;
-    if (starting_warp_thread_id == idx) {
+    if (starting_warp_thread_id == get_local_id(0)) {
       parent_index[shared_mem_offset] = num_nodes;
       child_index[shared_mem_offset] = 0;
     }
-    mem_fence(CLK_GLOBAL_MEM_FENCE);
+    mem_fence(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
     while (depth >= shared_mem_offset) {
       // Stack has elements
       while(child_index[depth] < 8) {
         child = children[parent_index[depth]*8+child_index[depth]];
-        if (idx == starting_warp_thread_id) {
+        if (get_local_id(0) == starting_warp_thread_id) {
           child_index[depth]++;
         }
-        mem_fence(CLK_GLOBAL_MEM_FENCE);
+        mem_fence(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
         if (child >= 0) {
           dx = x_cords[child] - px;
           dy = y_cords[child] - py;
@@ -553,11 +554,11 @@ __kernel void calculate_forces(__global volatile float *x_cords,
 
           } else {
             depth++;
-            if (starting_warp_thread_id == idx) {
+            if (starting_warp_thread_id == get_local_id(0)) {
               parent_index[depth] = child;
               child_index[depth] = 0;
             }
-            mem_fence(CLK_GLOBAL_MEM_FENCE);
+            mem_fence(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
           }
         } else {
           depth = max(shared_mem_offset, depth - 1);

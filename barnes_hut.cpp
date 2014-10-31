@@ -48,7 +48,7 @@ void CreateMemBuffer (cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) 
   int num_nodes = args->num_nodes;
   int num_bodies = args->num_bodies;
   // TODO This shouldn't be hardcodes
-  int num_work_groups = 32;
+  int num_work_groups = 40;
   args->minx = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
       sizeof(float) * num_work_groups, NULL, &err);
   args->maxx = clCreateBuffer(cv->context, CL_MEM_READ_WRITE,
@@ -421,9 +421,9 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
               go_deeper = true; 
             }
           }
-          if (k == 0) {
-            cout << "Go deaper: " << go_deeper << " child: " << child << endl;
-          }
+          //if (k == 0) {
+            //cout << "Go deaper: " << go_deeper << " child: " << child << endl;
+          //}
           if (!go_deeper) {
             for (int j = 0; j < WARPSIZE; j++) {
               temp[j] = 1 / sqrt(temp[j]);
@@ -509,7 +509,7 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
 }
 
 void CheckForces(HostMemory* gpu_host, HostMemory* cpu_host) {
-  const float epsilon = 0.001f;
+  const float epsilon = 0.01f;
   for (int i = 0; i < cpu_host->num_bodies; i++) {
     if (abs((gpu_host->velx[i] - cpu_host->velx[i])/cpu_host->velx[i]) > epsilon) {
      cout << "Error at index: " << i << " for velx, cpu : " << cpu_host->velx[i] << " gpu : " <<  gpu_host->velx[i] << endl;
@@ -540,58 +540,58 @@ void ReadFromGpu(cl_vars_t* cv, KernelArgs* args, HostMemory* host_memory) {
   int inc = (num_bodies + WARPSIZE -1) & (-WARPSIZE);
   cout << "inc : " << inc << endl;
   cl_int err;
-  err = clEnqueueReadBuffer(cv->commands, args->posx, true, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->posx, false, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posx, 0, NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->posy, true, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->posy, false, 0,
       sizeof(float)*(num_nodes + 1), host_memory->posy, 0, NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->count, true, 0, sizeof(int)*(num_nodes+1), host_memory->count, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->count, false, 0, sizeof(int)*(num_nodes+1), host_memory->count, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->posz, true, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->posz, false, 0, sizeof(float)*(num_nodes + 1), host_memory->posz, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->velx, true, 0, sizeof(float)*inc, host_memory->velx, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->velx, false, 0, sizeof(float)*inc, host_memory->velx, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->vely, true, 0, sizeof(float)*inc, host_memory->vely, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->vely, false, 0, sizeof(float)*inc, host_memory->vely, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->velz, true, 0, sizeof(float)*inc, host_memory->velz, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->velz, false, 0, sizeof(float)*inc, host_memory->velz, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->accx, true, 0, sizeof(float)*inc, host_memory->accx, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->accx, false, 0, sizeof(float)*inc, host_memory->accx, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->accy, true, 0, sizeof(float)*inc, host_memory->accy, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->accy, false, 0, sizeof(float)*inc, host_memory->accy, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->accz, true, 0, sizeof(float)*inc, host_memory->accz, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->accz, false, 0, sizeof(float)*inc, host_memory->accz, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->child, true, 0, sizeof(int)*8*(num_nodes + 1), host_memory->child, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->child, false, 0, sizeof(int)*8*(num_nodes + 1), host_memory->child, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->sort, true, 0, sizeof(int)*inc, host_memory->sort, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->sort, false, 0, sizeof(int)*inc, host_memory->sort, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->mass, true, 0, sizeof(float)*(num_nodes + 1), host_memory->mass, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->mass, false, 0, sizeof(float)*(num_nodes + 1), host_memory->mass, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->start, true, 0, sizeof(int)*(num_nodes + 1), host_memory->start, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->start, false, 0, sizeof(int)*(num_nodes + 1), host_memory->start, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->step, true, 0, sizeof(int), &host_memory->step, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->step, false, 0, sizeof(int), &host_memory->step, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->bottom, true, 0, sizeof(int), &host_memory->bottom, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->bottom, false, 0, sizeof(int), &host_memory->bottom, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->max_depth, true, 0, sizeof(int), &host_memory->max_depth, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->max_depth, false, 0, sizeof(int), &host_memory->max_depth, 0,
     NULL, NULL);
   CHK_ERR(err);
-  err = clEnqueueReadBuffer(cv->commands, args->radius, true, 0, sizeof(float), &host_memory->radius, 0,
+  err = clEnqueueReadBuffer(cv->commands, args->radius, false, 0, sizeof(float), &host_memory->radius, 0,
     NULL, NULL);
   CHK_ERR(err);
 }
@@ -631,15 +631,17 @@ void DebuggingPrintValue(cl_vars_t* cv, KernelArgs* args, HostMemory *host_memor
 
 int main (int argc, char *argv[])
 {
-  int split = 89;
+  int split = 100;
   int num_bodies = pow(split, 3);
   printf("Number Bodies: %d \n", num_bodies);
-  int blocks = 4; // TODO Supposed to be set to multiprocecsor count
+  cout << "work group size: " << CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE << endl;
+  cout << "work group size: " << CL_KERNEL_WORK_GROUP_SIZE << endl;
+  int blocks = 32; // TODO Supposed to be set to multiprocecsor count
 
   int num_nodes = num_bodies * 2;
-  if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
-  while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
-  num_nodes--;
+  //if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
+  //while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
+  //num_nodes--;
 
   KernelArgs args;
   args.num_nodes = num_nodes;
@@ -686,10 +688,17 @@ int main (int argc, char *argv[])
   readFile(kernel_file, kernel_source_str);
 
   cl_vars_t cv;
+  size_t cb;
   initialize_ocl(cv);
   compile_ocl_program(kernel_map, cv, kernel_source_str.c_str(),
       kernel_names);
-
+  //cl_context context = clCreateContextFromType(0,
+    //CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
+  //clGetContextInfo(context, CL_CONTEXT_DEVICES, 0,
+    //NULL, &cb);
+    //devices = malloc(cb);
+  //clGetContextInfo(context, CL_CONTEXT_DEVICES, cb,
+  //devices, NULL);
   cl_int err = CL_SUCCESS;
 
   CreateMemBuffer(&cv, &args, &host_memory);
@@ -698,8 +707,11 @@ int main (int argc, char *argv[])
   // Set local work size and global work sizes <]
   // TODO CAN BE optimized.
   size_t local_work_size[1] = {THREADS1};
-  size_t global_work_size[1] = {THREADS1};
-  size_t num_work_groups = 2;
+  size_t global_work_size[1] = {8*THREADS1};
+
+  //cout << clGetKernelWorkGroupInfo ( kernel_map[bounding_box_name_str], cl_device_id device, 
+      //cl_kernel_work_group_info param_name, size_t param_value_size, void *param_value,
+      //size_t *param_value_size_ret) << endl;
 
   // Set the Kernel Arguements for bounding box
   SetArgs(&kernel_map[bounding_box_name_str], &args);
@@ -739,19 +751,21 @@ int main (int argc, char *argv[])
 
   //// Run Sorted Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[sort_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  CHK_ERR(err);
+  //CHK_ERR(err);
   //clFlush(cv.commands);
   //ReadFromGpu(&cv, &args, &host_memory);
   //CheckSorted(&host_memory, &host_memory_before_sorted, num_nodes, num_bodies);
 
 
-  //HostMemory host_memory_cpu_force_calc;
-  //AllocateHostMemory(&host_memory_cpu_force_calc, num_nodes, num_bodies);
-  //ReadFromGpu(&cv, &args, &host_memory_cpu_force_calc);
-  //CalculateForce(&host_memory_cpu_force_calc, num_bodies);
+  HostMemory host_memory_cpu_force_calc;
+  AllocateHostMemory(&host_memory_cpu_force_calc, num_nodes, num_bodies);
+  ReadFromGpu(&cv, &args, &host_memory_cpu_force_calc);
+  clFinish(cv.commands);
+  CalculateForce(&host_memory_cpu_force_calc, num_bodies);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[calculate_forces_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   ReadFromGpu(&cv, &args, &host_memory);
-  //CheckForces(&host_memory, &host_memory_cpu_force_calc);
+  clFinish(cv.commands);
+  CheckForces(&host_memory, &host_memory_cpu_force_calc);
 
   DebuggingPrintValue(&cv, &args, &host_memory, false);
 
