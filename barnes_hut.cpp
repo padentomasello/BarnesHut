@@ -492,14 +492,9 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
   }
   for(; k < num_bodies; k++) {
     int index = host_memory->sort[k];
-    cout << "index: " << index << endl;
     float px1 = host_memory->posx[index];
     float py1 = host_memory->posy[index];
     float pz1 = host_memory->posz[index];
-    //if (index == 0) {
-      cout << "child:  "<< child << " dx: " << dx << " dy: " << dy << " dz: " << dz << endl;
-      cout << "child:  "<< child << " px: " << px1 << " py: " << py1 << " pz: " << pz1 << endl;
-    //}
     float ax = 0.0f;
     float ay = 0.0f;
     float az = 0.0f;
@@ -514,10 +509,6 @@ void CalculateForce(HostMemory *host_memory, int num_bodies) {
           float dx = host_memory->posx[child] - px1;
           float dy = host_memory->posy[child] - py1;
           float dz = host_memory->posz[child] - pz1;
-          //if (index == 0) {
-            //cout << "child:  "<< child << " dx: " << dx << " dy: " << dy << " dz: " << dz << endl;
-            //cout << "child:  "<< child << " px: " << px << " py: " << py << " pz: " << pz << endl;
-          //}
           float tmp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           if (child < num_bodies) {
             tmp = 1 / sqrt(tmp);

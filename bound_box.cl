@@ -522,11 +522,6 @@ __kernel void calculate_forces(__global volatile float *x_cords,
     px = x_cords[index];
     py = y_cords[index];
     pz = z_cords[index];
-    if (index == 0) {
-      printf("TESTING  child: %d \n", child);
-      printf("dx: %f, dy: %f, dz: %f \n", dx, dy, dz);
-      printf("px: %f, py: %f, pz: %f \n", px, py, pz);
-    }
     ax = 0.0f;
     ay = 0.0f;
     az = 0.0f;
@@ -551,11 +546,6 @@ __kernel void calculate_forces(__global volatile float *x_cords,
           temp = dx*dx + (dy*dy + (dz*dz + 0.0001f));
           //if ((child <= num_bodies || thread_vote(allBlocks, warp_id, temp >= dq[depth]))) {
           if ((child < num_bodies)  ||  thread_vote(allBlocks, warp_id, temp >= dq[depth]) )  {
-            if (index == 0) {
-            printf("TESTING  child: %d \n", child);
-            printf("dx: %f, dy: %f, dz: %f \n", dx, dy, dz);
-            printf("px: %f, py: %f, pz: %f \n", px, py, pz);
-            }
             temp = native_rsqrt(temp);
             temp = mass[child] * temp * temp *temp;
             ax += dx * temp;
