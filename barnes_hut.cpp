@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iostream>
 #include <unistd.h>
+#include <sys/time.h>
 
 #include "clhelp.h"
 
@@ -58,6 +59,8 @@ static double drnd()
    randx = (A * randx + B) & MASK;
    return (double)lastrand / TWOTO31;
 }
+
+struct timeval timeStart, timeEnd;
 
 struct KernelArgs{
   cl_mem posx, posy, posz, child, mass, start, minx, maxx, miny, maxy, minz, maxz, blocked, step, bottom, max_depth, radius, count;
@@ -672,7 +675,7 @@ int main (int argc, char *argv[])
     exit(-1);
   }
   int num_nodes = num_bodies * 2;
-  int blocks = 32; // TODO Supposed to be set to multiprocecsor count
+  int blocks = 8; // TODO Supposed to be set to multiprocecsor count
   if (num_nodes < 1024*blocks) num_nodes = 1024*blocks;
   while ((num_nodes & (WARPSIZE - 1)) != 0) num_nodes++;
   num_nodes--;
@@ -782,7 +785,7 @@ int main (int argc, char *argv[])
   // Set local work size and global work sizes <]
   // TODO CAN BE optimized.
   size_t local_work_size[1] = {THREADS1};
-  size_t global_work_size[1] = {THREADS1};
+  size_t global_work_size[1] = {8*THREADS1};
 
   //cout << clGetKernelWorkGroupInfo ( kernel_map[bounding_box_name_str], cl_device_id device, 
       //cl_kernel_work_group_info param_name, size_t param_value_size, void *param_value,
@@ -795,6 +798,8 @@ int main (int argc, char *argv[])
   SetArgs(&kernel_map[sort_name_str], &args);
   SetArgs(&kernel_map[calculate_forces_name_str], &args);
 
+  gettimeofday(&timeStart, NULL);
+
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[build_tree_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
@@ -802,20 +807,20 @@ int main (int argc, char *argv[])
 
  //Read memory and calculate summation tree on CPU
  //
-  HostMemory host_memory_test;
-  AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
-  err = clFinish(cv.commands);
-  ReadFromGpu(&cv, &args, &host_memory_test);
-  err = clFinish(cv.commands);
-  CalculateSummation(&cv, &args, &host_memory_test);
+  //HostMemory host_memory_test;
+  //AllocateHostMemory(&host_memory_test, num_nodes, num_bodies);
+  //err = clFinish(cv.commands);
+  //ReadFromGpu(&cv, &args, &host_memory_test);
+  //err = clFinish(cv.commands);
+  //CalculateSummation(&cv, &args, &host_memory_test);
   // Run summation Kernel
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[compute_sums_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  CHK_ERR(err);
-  err = clFinish(cv.commands);
-  ReadFromGpu(&cv, &args, &host_memory);
-  clFinish(cv.commands);
-  CheckSummation(&host_memory, &host_memory_test, num_nodes);
-  err = clFinish(cv.commands);
+  //CHK_ERR(err);
+  //err = clFinish(cv.commands);
+  //ReadFromGpu(&cv, &args, &host_memory);
+  //clFinish(cv.commands);
+  //CheckSummation(&host_memory, &host_memory_test, num_nodes);
+  //err = clFinish(cv.commands);
 
   //// TODO These tests can be condenses
   //HostMemory host_memory_before_sorted;
@@ -834,17 +839,20 @@ int main (int argc, char *argv[])
   //CheckSorted(&host_memory, &host_memory_before_sorted, num_nodes, num_bodies);
 
 
-  HostMemory host_memory_cpu_force_calc;
-  AllocateHostMemory(&host_memory_cpu_force_calc, num_nodes, num_bodies);
-  ReadFromGpu(&cv, &args, &host_memory_cpu_force_calc);
-  clFinish(cv.commands);
-  CalculateForce(&host_memory_cpu_force_calc, num_bodies);
+  //HostMemory host_memory_cpu_force_calc;
+  //AllocateHostMemory(&host_memory_cpu_force_calc, num_nodes, num_bodies);
+  //ReadFromGpu(&cv, &args, &host_memory_cpu_force_calc);
+  //clFinish(cv.commands);
+  //CalculateForce(&host_memory_cpu_force_calc, num_bodies);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[calculate_forces_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   ReadFromGpu(&cv, &args, &host_memory);
   clFinish(cv.commands);
-  CheckForces(&host_memory, &host_memory_cpu_force_calc);
+  gettimeofday(&timeEnd, NULL);
+  std::cout << "Time: " << ((timeEnd.tv_sec - timeStart.tv_sec) * 1000000 + timeEnd.tv_usec - timeStart.tv_usec)
+            << " us " << std::endl;
+  //CheckForces(&host_memory, &host_memory_cpu_force_calc);
 
-  DebuggingPrintValue(&cv, &args, &host_memory, false);
+  //DebuggingPrintValue(&cv, &args, &host_memory, false);
 
 }
 

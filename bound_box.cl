@@ -479,7 +479,7 @@ __kernel void calculate_forces(__global volatile float *x_cords,
   int k, index, i;
   int warp_id, starting_warp_thread_id, shared_mem_offset, difference, depth, child;
   __local volatile int child_index[MAXDEPTH * THREADS1/WARPSIZE], parent_index[MAXDEPTH * THREADS1/WARPSIZE];
- __local volatile int allBlock[THREADS1 / WARPSIZE];
+   __local volatile int allBlock[THREADS1 / WARPSIZE];
   __local volatile float dq[MAXDEPTH * THREADS1/WARPSIZE];
   __local volatile int shared_step, shared_maxdepth;
   __local volatile int allBlocks[THREADS1/WARPSIZE];
