@@ -785,7 +785,7 @@ int main (int argc, char *argv[])
   // Set local work size and global work sizes <]
   // TODO CAN BE optimized.
   size_t local_work_size[1] = {THREADS1};
-  size_t global_work_size[1] = {8*THREADS1};
+  size_t global_work_size[1] = {6*THREADS1};
 
   //cout << clGetKernelWorkGroupInfo ( kernel_map[bounding_box_name_str], cl_device_id device, 
       //cl_kernel_work_group_info param_name, size_t param_value_size, void *param_value,
@@ -797,8 +797,8 @@ int main (int argc, char *argv[])
   SetArgs(&kernel_map[compute_sums_name_str], &args);
   SetArgs(&kernel_map[sort_name_str], &args);
   SetArgs(&kernel_map[calculate_forces_name_str], &args);
-
   gettimeofday(&timeStart, NULL);
+
 
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[bounding_box_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
   CHK_ERR(err);
@@ -844,10 +844,11 @@ int main (int argc, char *argv[])
   //ReadFromGpu(&cv, &args, &host_memory_cpu_force_calc);
   //clFinish(cv.commands);
   //CalculateForce(&host_memory_cpu_force_calc, num_bodies);
+  clFinish(cv.commands);
   err = clEnqueueNDRangeKernel(cv.commands, kernel_map[calculate_forces_name_str], 1, NULL, global_work_size, local_work_size, 0, NULL, NULL);
-  ReadFromGpu(&cv, &args, &host_memory);
   clFinish(cv.commands);
   gettimeofday(&timeEnd, NULL);
+  ReadFromGpu(&cv, &args, &host_memory);
   std::cout << "Time: " << ((timeEnd.tv_sec - timeStart.tv_sec) * 1000000 + timeEnd.tv_usec - timeStart.tv_usec)
             << " us " << std::endl;
   //CheckForces(&host_memory, &host_memory_cpu_force_calc);
